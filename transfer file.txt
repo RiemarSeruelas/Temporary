@@ -1,2 +1,3 @@
-backend\server.js:667:app.post("/api/machine-check/confirm", async (req, res) => {
-backend\server.js:707:app.post("/api/machine-check/admin/logs", async (req, res) => {
+Invoke-WebRequest http://localhost:5000/api/machine-check/confirm -Method POST -ContentType "application/json" -Body "{}"
+
+Invoke-WebRequest http://localhost:5178/api/machine-check/confirm -Method POST -ContentType "application/json" -Body "{}"

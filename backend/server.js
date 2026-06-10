@@ -25,6 +25,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin2026";
 const FACE_UNREGISTER_PATH = process.env.FACE_UNREGISTER_PATH || "";
 
 const POSTGRES_SCHEMA = process.env.POSTGRES_SCHEMA || "app";
+const PEOPLE_TABLE = process.env.POSTGRES_PEOPLE_TABLE || "face_people";
 const CONFIRMATIONS_TABLE = process.env.POSTGRES_CONFIRMATIONS_TABLE || "machine_check_confirmations";
 
 const pgPool = new Pool({
@@ -41,6 +42,7 @@ function tableName(name) {
   return `"${safeSchema}"."${safeName}"`;
 }
 
+const peopleTable = tableName(PEOPLE_TABLE);
 const confirmationsTable = tableName(CONFIRMATIONS_TABLE);
 
 let mqttConnected = false;
@@ -291,36 +293,86 @@ function searchPayload(image) {
 }
 
 
-function validateAppNamespace(candidate) {
-  if (!candidate) return { ok: false, error: "No face candidate returned." };
+async function upsertOperatorFace({ person_name, employee_id, department, role, machine, machine_name, candidate }) {
+  const faceApiId = candidate?.face_api_id ?? null;
+  const faceImgName = candidate?.face_img_name ?? null;
 
-  if (candidate.is_active === false || candidate.is_active === "false") {
-    return { ok: false, error: "Face recognized, but it is inactive in the Face API." };
+  if (!faceApiId && !faceImgName) {
+    throw new Error("Face registered, but Face API did not return an id or img_name after verification search.");
   }
 
-  if (candidate.app_namespace && candidate.app_namespace !== APP_NAMESPACE) {
-    return {
-      ok: false,
-      error: `Face recognized, but app_namespace is '${candidate.app_namespace}', not '${APP_NAMESPACE}'.`,
-    };
-  }
+  const saved = await pgPool.query(
+    `
+      INSERT INTO ${peopleTable} (
+        person_name,
+        employee_id,
+        department,
+        role,
+        machine,
+        machine_name,
+        face_api_id,
+        face_api_object_id,
+        face_img_name,
+        face_app_namespace,
+        face_hash,
+        embedding_hash,
+        is_active
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, TRUE)
+      RETURNING *
+    `,
+    [
+      person_name,
+      employee_id || null,
+      department || null,
+      role || "operator",
+      machine || null,
+      machine_name || machine || null,
+      faceApiId,
+      candidate?.face_api_object_id || null,
+      faceImgName,
+      candidate?.app_namespace || APP_NAMESPACE,
+      candidate?.face_hash || null,
+      candidate?.embedding_hash || null,
+    ]
+  );
 
-  if (APP_NAMESPACE_STRICT && !candidate.app_namespace) {
-    return {
-      ok: false,
-      error: `Face recognized, but Face API did not return app_namespace. Add app_namespace='${APP_NAMESPACE}' to Face API register/search response or set APP_NAMESPACE_STRICT=false temporarily.`,
-    };
-  }
-
-  return { ok: true };
+  return saved.rows[0];
 }
 
-async function insertConfirmationLog({ person_name, department, machine, machine_name, candidate }) {
+async function findOperatorByCandidate(candidate) {
+  const faceApiId = candidate?.face_api_id ?? null;
+  const faceImgName = candidate?.face_img_name ?? null;
+
+  if (!faceApiId && !faceImgName) return null;
+
+  const found = await pgPool.query(
+    `
+      SELECT *
+      FROM ${peopleTable}
+      WHERE is_active = TRUE
+        AND (
+          ($1::integer IS NOT NULL AND face_api_id = $1::integer)
+          OR ($2::text IS NOT NULL AND face_img_name = $2::text)
+        )
+      ORDER BY id DESC
+      LIMIT 1
+    `,
+    [faceApiId, faceImgName]
+  );
+
+  return found.rows[0] || null;
+}
+
+async function insertConfirmationLog({ operator, machine, machine_name, candidate }) {
   const saved = await pgPool.query(
     `
       INSERT INTO ${confirmationsTable} (
+        person_id,
         person_name,
+        employee_id,
         department,
+        role,
         machine,
         machine_name,
         face_api_id,
@@ -330,19 +382,21 @@ async function insertConfirmationLog({ person_name, department, machine, machine
         face_threshold,
         face_confidence,
         face_app_namespace,
-        face_is_active,
         face_hash,
         embedding_hash,
         confirmation_status
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'confirmed')
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'confirmed')
       RETURNING *
     `,
     [
-      person_name,
-      department,
-      machine,
-      machine_name,
+      operator.id,
+      operator.person_name,
+      operator.employee_id || null,
+      operator.department || null,
+      operator.role || "operator",
+      machine || operator.machine || null,
+      machine_name || operator.machine_name || machine || operator.machine || null,
       candidate.face_api_id,
       candidate.face_api_object_id,
       candidate.face_img_name,
@@ -350,7 +404,6 @@ async function insertConfirmationLog({ person_name, department, machine, machine
       candidate.threshold,
       candidate.confidence,
       candidate.app_namespace || null,
-      candidate.is_active === undefined ? null : candidate.is_active,
       candidate.face_hash || null,
       candidate.embedding_hash || null,
     ]
@@ -364,10 +417,33 @@ async function ensureTables() {
   await pgPool.query(`CREATE SCHEMA IF NOT EXISTS "${safeSchema}"`);
 
   await pgPool.query(`
-    CREATE TABLE IF NOT EXISTS ${confirmationsTable} (
+    CREATE TABLE IF NOT EXISTS ${peopleTable} (
       id SERIAL PRIMARY KEY,
       person_name TEXT NOT NULL,
+      employee_id TEXT,
       department TEXT,
+      role TEXT DEFAULT 'operator',
+      machine TEXT,
+      machine_name TEXT,
+      face_api_id INTEGER,
+      face_api_object_id TEXT,
+      face_img_name TEXT,
+      face_app_namespace TEXT,
+      face_hash TEXT,
+      embedding_hash TEXT,
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS ${confirmationsTable} (
+      id SERIAL PRIMARY KEY,
+      person_id INTEGER,
+      person_name TEXT NOT NULL,
+      employee_id TEXT,
+      department TEXT,
+      role TEXT,
       machine TEXT NOT NULL,
       machine_name TEXT,
       face_api_id INTEGER,
@@ -377,7 +453,6 @@ async function ensureTables() {
       face_threshold DOUBLE PRECISION,
       face_confidence DOUBLE PRECISION,
       face_app_namespace TEXT,
-      face_is_active BOOLEAN,
       face_hash TEXT,
       embedding_hash TEXT,
       confirmation_status TEXT DEFAULT 'confirmed',
@@ -385,24 +460,32 @@ async function ensureTables() {
     )
   `);
 
-  // Safe migrations for older confirmation/attendance tables created during testing.
-  await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS person_name TEXT`);
-  await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS department TEXT`);
-  await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS machine TEXT`);
-  await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS machine_name TEXT`);
-  await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS face_api_id INTEGER`);
-  await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS face_api_object_id TEXT`);
-  await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS face_img_name TEXT`);
-  await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS face_distance DOUBLE PRECISION`);
-  await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS face_threshold DOUBLE PRECISION`);
-  await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS face_confidence DOUBLE PRECISION`);
-  await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS face_app_namespace TEXT`);
-  await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS face_is_active BOOLEAN`);
-  await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS face_hash TEXT`);
-  await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS embedding_hash TEXT`);
-  await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS confirmation_status TEXT DEFAULT 'confirmed'`);
-  await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
+  // Safe migrations for old test tables.
+  const peopleColumns = [
+    ["employee_id", "TEXT"], ["department", "TEXT"], ["role", "TEXT DEFAULT 'operator'"],
+    ["machine", "TEXT"], ["machine_name", "TEXT"], ["face_api_id", "INTEGER"],
+    ["face_api_object_id", "TEXT"], ["face_img_name", "TEXT"], ["face_app_namespace", "TEXT"],
+    ["face_hash", "TEXT"], ["embedding_hash", "TEXT"], ["is_active", "BOOLEAN DEFAULT TRUE"],
+    ["created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"]
+  ];
+  for (const [col, typ] of peopleColumns) {
+    await pgPool.query(`ALTER TABLE ${peopleTable} ADD COLUMN IF NOT EXISTS ${col} ${typ}`);
+  }
+
+  const confirmationColumns = [
+    ["person_id", "INTEGER"], ["person_name", "TEXT"], ["employee_id", "TEXT"],
+    ["department", "TEXT"], ["role", "TEXT"], ["machine", "TEXT"],
+    ["machine_name", "TEXT"], ["face_api_id", "INTEGER"], ["face_api_object_id", "TEXT"],
+    ["face_img_name", "TEXT"], ["face_distance", "DOUBLE PRECISION"], ["face_threshold", "DOUBLE PRECISION"],
+    ["face_confidence", "DOUBLE PRECISION"], ["face_app_namespace", "TEXT"],
+    ["face_hash", "TEXT"], ["embedding_hash", "TEXT"],
+    ["confirmation_status", "TEXT DEFAULT 'confirmed'"], ["created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"]
+  ];
+  for (const [col, typ] of confirmationColumns) {
+    await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS ${col} ${typ}`);
+  }
 }
+
 
 if (MQTT_BROKER) {
   console.log("Connecting to MQTT broker:", MQTT_BROKER);
@@ -525,7 +608,7 @@ app.get("/data-machine2", (req, res) => {
 
 app.post("/api/face/register", async (req, res) => {
   try {
-    const { person_name, department, machine, machine_name } = req.body;
+    const { person_name, employee_id, department, role, machine, machine_name } = req.body;
     const image = req.body.image || req.body.img;
 
     if (!person_name || !department || !machine || !image) {
@@ -536,7 +619,9 @@ app.post("/api/face/register", async (req, res) => {
       person_name,
       name: person_name,
       identity: `${APP_NAMESPACE}|${machine}|${person_name}`,
+      employee_id: employee_id || "",
       department,
+      role: role || "operator",
       machine,
       machine_name: machine_name || machine,
       source_app: "Mespack Machine Dashboard",
@@ -544,18 +629,31 @@ app.post("/api/face/register", async (req, res) => {
       is_active: true,
     }));
 
-    let candidate = null;
-    let searchResponse = null;
-    try {
-      searchResponse = await faceApiPost("/search", searchPayload(image));
-      candidate = firstFaceCandidate(searchResponse);
-    } catch (searchErr) {
-      console.warn("Face registered, but verification search failed:", searchErr.message);
+    const searchResponse = await faceApiPost("/search", searchPayload(image));
+    const candidate = firstFaceCandidate(searchResponse);
+
+    if (!candidate?.face_api_id && !candidate?.face_img_name) {
+      return res.status(502).json({
+        error: "Face API registered the image, but verification search did not return a usable id/img_name.",
+        registerResponse,
+        searchResponse,
+      });
     }
+
+    const operator = await upsertOperatorFace({
+      person_name,
+      employee_id,
+      department,
+      role: role || "operator",
+      machine,
+      machine_name: machine_name || machine,
+      candidate,
+    });
 
     res.json({
       ok: true,
-      message: `Registered face for ${person_name}. Face API should store app_namespace='${APP_NAMESPACE}'.`,
+      message: `Registered ${person_name} in Face API and PostgreSQL.`,
+      operator,
       candidate,
       registerResponse,
       searchResponse,
@@ -568,40 +666,43 @@ app.post("/api/face/register", async (req, res) => {
 
 app.post("/api/machine-check/confirm", async (req, res) => {
   try {
-    const { person_name, department, machine, machine_name } = req.body;
+    const { machine, machine_name } = req.body;
     const image = req.body.image || req.body.img;
 
-    if (!person_name || !department || !machine || !image) {
-      return res.status(400).json({ error: "person_name, department, machine, and image/img are required." });
+    if (!machine || !image) {
+      return res.status(400).json({ error: "machine and image/img are required." });
     }
 
     const searchResponse = await faceApiPost("/search", searchPayload(image));
     const candidate = firstFaceCandidate(searchResponse);
 
-    if (!candidate?.face_api_id) {
+    if (!candidate?.face_api_id && !candidate?.face_img_name) {
       return res.status(404).json({ error: "Face scanned, but the API returned no valid candidate.", searchResponse });
     }
 
-    const namespaceCheck = validateAppNamespace(candidate);
-    if (!namespaceCheck.ok) {
-      return res.status(403).json({ error: namespaceCheck.error, candidate, searchResponse });
+    const operator = await findOperatorByCandidate(candidate);
+
+    if (!operator) {
+      return res.status(403).json({
+        error: `Face recognized by Face API as ID ${candidate.face_api_id || candidate.face_img_name}, but this face is not registered/active in PostgreSQL for this dashboard. Register it first from Admin/Register Face.`,
+        candidate,
+        searchResponse,
+      });
     }
 
     const log = await insertConfirmationLog({
-      person_name,
-      department,
+      operator,
       machine,
       machine_name: machine_name || machine,
       candidate,
     });
 
-    res.json({ ok: true, log, candidate, searchResponse });
+    res.json({ ok: true, log, operator, candidate, searchResponse });
   } catch (err) {
     console.error("Machine check confirmation failed:", err);
     res.status(500).json({ error: err.message });
   }
 });
-
 
 app.post("/api/machine-check/admin/logs", async (req, res) => {
   try {
@@ -620,13 +721,21 @@ app.post("/api/machine-check/admin/logs", async (req, res) => {
       `
     );
 
-    res.json({ ok: true, logs: logs.rows });
+    const people = await pgPool.query(
+      `
+        SELECT *
+        FROM ${peopleTable}
+        ORDER BY created_at DESC, id DESC
+        LIMIT 300
+      `
+    );
+
+    res.json({ ok: true, logs: logs.rows, people: people.rows });
   } catch (err) {
     console.error("Admin confirmation logs failed:", err);
     res.status(500).json({ error: err.message });
   }
 });
-
 
 app.post("/api/face/unregister", async (req, res) => {
   try {
@@ -640,26 +749,42 @@ app.post("/api/face/unregister", async (req, res) => {
       return res.status(400).json({ error: "face_api_id or face_img_name is required." });
     }
 
-    if (!FACE_UNREGISTER_PATH) {
-      return res.status(501).json({
-        error: "Face unregister is not configured. Set FACE_UNREGISTER_PATH in backend/.env to your Face API delete/deactivate endpoint.",
+    const updated = await pgPool.query(
+      `
+        UPDATE ${peopleTable}
+        SET is_active = FALSE
+        WHERE ($1::integer IS NOT NULL AND face_api_id = $1::integer)
+           OR ($2::text IS NOT NULL AND face_img_name = $2::text)
+        RETURNING *
+      `,
+      [face_api_id || null, face_img_name || null]
+    );
+
+    let faceApiUnregisterResponse = null;
+    if (FACE_UNREGISTER_PATH) {
+      faceApiUnregisterResponse = await faceApiPost(FACE_UNREGISTER_PATH, {
+        id: face_api_id,
+        face_api_id,
+        img_name: face_img_name,
+        app_namespace: APP_NAMESPACE,
+        is_active: false,
       });
     }
 
-    const unregisterResponse = await faceApiPost(FACE_UNREGISTER_PATH, {
-      id: face_api_id,
-      face_api_id,
-      img_name: face_img_name,
-      app_namespace: APP_NAMESPACE,
-      is_active: false,
+    res.json({
+      ok: true,
+      message: updated.rowCount
+        ? "Face deactivated in PostgreSQL for this dashboard."
+        : "No PostgreSQL operator mapping was found for that Face ID / Image ID.",
+      updated: updated.rows,
+      faceApiUnregisterResponse,
     });
-
-    res.json({ ok: true, unregisterResponse });
   } catch (err) {
     console.error("Face unregister failed:", err);
     res.status(500).json({ error: err.message });
   }
 });
+
 
 app.get("/api/face/health", async (req, res) => {
   try {
@@ -677,7 +802,8 @@ ensureTables()
       console.log(`✅ Dashboard endpoint: http://localhost:${PORT}/data`);
       console.log(`✅ Face API base URL: ${FACE_API_BASE_URL}`);
       console.log(`✅ App namespace: ${APP_NAMESPACE} (strict=${APP_NAMESPACE_STRICT})`);
-      console.log(`✅ PostgreSQL table: ${confirmationsTable}`);
+      console.log(`✅ PostgreSQL people table: ${peopleTable}`);
+      console.log(`✅ PostgreSQL confirmations table: ${confirmationsTable}`);
     });
   })
   .catch((err) => {

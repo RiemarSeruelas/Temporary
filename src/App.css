@@ -3113,3 +3113,18 @@ button:hover {
     min-height: 240px;
   }
 }
+
+.face-helper-text {
+  grid-column: 1 / -1;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(59, 130, 246, 0.10);
+  border: 1px solid rgba(59, 130, 246, 0.20);
+  color: inherit;
+  font-size: 0.9rem;
+}
+
+.face-admin-title {
+  font-weight: 800;
+  margin: 0 0 10px;
+}

@@ -1,59 +1,33 @@
-FULL FIX: Machine Check Confirmation + Face API app_namespace
+MACHINE CHECK CONFIRMATION - CLEAN POSTGRES MAPPING FIX
 
-WHAT CHANGED
-- Removed the face_people / login mapping dependency.
-- Face API is used only for recognition.
-- Dashboard inputs operator name, department, and machine.
-- If Face API recognizes the face and app_namespace is accepted, the backend saves a machine check confirmation to PostgreSQL.
-- Register Face sends app_namespace=machine_dashboard and is_active=true to Face API.
-- Admin can view PostgreSQL confirmation logs.
-- Admin unregister/deactivate is available only if your Face API has a delete/deactivate endpoint configured in FACE_UNREGISTER_PATH.
+Flow:
+1. Register Face:
+   - Dashboard sends image to Face API /register.
+   - Dashboard verifies the Face API match with /search.
+   - Dashboard saves operator details in PostgreSQL app.face_people.
 
-IMPORTANT FACE API REQUIREMENT
-The Face API /register must save these fields to Mongo:
-  app_namespace: machine_dashboard
-  is_active: true
+2. Confirm Check:
+   - Operator only scans face and chooses machine.
+   - Face API returns recognized id/img_name.
+   - Backend checks PostgreSQL app.face_people for that face_api_id/img_name.
+   - If active, backend saves confirmation to app.machine_check_confirmations.
 
-The Face API /search must return these fields in each candidate:
-  app_namespace
-  is_active
+This means the Face API remains the recognition engine, and PostgreSQL owns your app-specific people/details/history.
 
-If /search does not return app_namespace yet, set this in backend/.env temporarily:
-  APP_NAMESPACE_STRICT=false
+Setup:
+1. Run backend/setup_face_postgres.sql in pgAdmin.
+2. Copy backend/.env.example to backend/.env and set PostgreSQL + FACE_API_BASE_URL.
+3. npm install
+4. cd backend && npm install && cd ..
+5. npm start
 
-Once Face API returns app_namespace, set it back to:
-  APP_NAMESPACE_STRICT=true
+Important env:
+FACE_API_BASE_URL=http://10.156.119.146:5005
+POSTGRES_PEOPLE_TABLE=face_people
+POSTGRES_CONFIRMATIONS_TABLE=machine_check_confirmations
+APP_NAMESPACE=machine_dashboard
+APP_NAMESPACE_STRICT=false
 
-RUNNING
-1. Extract this ZIP into a clean folder.
-2. Copy your real assets into:
-   src/assets/machine.png
-   src/assets/zone.png
-   public/models/mespack.glb
-3. Copy backend/.env.example to backend/.env.
-4. Edit backend/.env:
-   FACE_API_BASE_URL=http://10.156.119.146:5005
-   APP_NAMESPACE=machine_dashboard
-   POSTGRES_HOST=your_postgres_ip
-   POSTGRES_DB=mydatabase
-   POSTGRES_USER=postgres
-   POSTGRES_PASSWORD=your_password
-5. Optional: run backend/setup_face_postgres.sql in pgAdmin.
-   The backend also auto-creates/migrates the confirmation table when it starts.
-6. Run:
-   npm install
-   cd backend
-   npm install
-   cd ..
-   npm start
-
-OPEN
-Frontend: http://localhost:5178
-Backend health: http://localhost:5000/api/face/health
-
-EXPECTED FLOW
-Confirm Check:
-  App captures face -> Face API /search -> app_namespace check -> PostgreSQL machine_check_confirmations insert
-
-Register Face:
-  App captures face -> Face API /register with app_namespace=machine_dashboard and is_active=true
+Admin:
+- Load Confirmations shows both registered faces and confirmation logs.
+- Unregister/Deactivate sets is_active=false in PostgreSQL so the face can no longer confirm in this dashboard.

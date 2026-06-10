@@ -1052,10 +1052,13 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
   const [lastRegister, setLastRegister] = useState(null);
   const [adminPassword, setAdminPassword] = useState("");
   const [adminLogs, setAdminLogs] = useState([]);
+  const [adminPeople, setAdminPeople] = useState([]);
   const [unregisterFaceId, setUnregisterFaceId] = useState("");
   const [form, setForm] = useState({
     person_name: "",
+    employee_id: "",
     department: "",
+    role: "operator",
     machine: defaultMachineId || machines?.[0]?.id || "mespack",
   });
 
@@ -1116,6 +1119,7 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
     setLastConfirmation(null);
     setLastRegister(null);
     setAdminLogs([]);
+    setAdminPeople([]);
 
     if (nextMode === "register" || nextMode === "confirm") {
       setTimeout(startCamera, 80);
@@ -1187,7 +1191,7 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
       });
 
       setLastRegister(data);
-      setStatus(`Registered ${form.person_name}. Face API app_namespace should be machine_dashboard.`);
+      setStatus(`Registered ${form.person_name} in Face API and PostgreSQL.`);
       stopCamera();
     } catch (err) {
       setError(err.message);
@@ -1198,8 +1202,6 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
   }
 
   async function handleConfirmCheck() {
-    if (!validateOperatorFields()) return;
-
     setLoading(true);
     setError("");
     setStatus("Scanning face and saving machine check confirmation...");
@@ -1232,7 +1234,8 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
     try {
       const data = await postJson("/api/machine-check/admin/logs", { password: adminPassword });
       setAdminLogs(data.logs || []);
-      setStatus(`Loaded ${(data.logs || []).length} rows.`);
+      setAdminPeople(data.people || []);
+      setStatus(`Loaded ${(data.logs || []).length} confirmations and ${(data.people || []).length} registered faces.`);
     } catch (err) {
       setError(err.message);
       setStatus("");
@@ -1289,11 +1292,11 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
           <div className="face-action-grid">
             <button className="face-action-card" onClick={() => chooseMode("confirm")}>
               <strong>Confirm Check</strong>
-              <span>Scan face and save machine check confirmation</span>
+              <span>Scan face, match PostgreSQL details, then save confirmation</span>
             </button>
             <button className="face-action-card" onClick={() => chooseMode("register")}>
               <strong>Register Face</strong>
-              <span>Add app_namespace to new Face API registrations</span>
+              <span>Register in Face API and save operator details in PostgreSQL</span>
             </button>
             <button className="face-action-card" onClick={() => chooseMode("admin")}>
               <strong>Admin</strong>
@@ -1305,22 +1308,51 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
         {(mode === "register" || mode === "confirm") && (
           <>
             <div className="face-form-grid">
-              <label>
-                Operator Name
-                <input
-                  value={form.person_name}
-                  onChange={(e) => setForm((prev) => ({ ...prev, person_name: e.target.value }))}
-                  placeholder="e.g. Riemar Seruelas"
-                />
-              </label>
-              <label>
-                Department
-                <input
-                  value={form.department}
-                  onChange={(e) => setForm((prev) => ({ ...prev, department: e.target.value }))}
-                  placeholder="e.g. Engineering"
-                />
-              </label>
+              {mode === "register" && (
+                <>
+                  <label>
+                    Operator Name
+                    <input
+                      value={form.person_name}
+                      onChange={(e) => setForm((prev) => ({ ...prev, person_name: e.target.value }))}
+                      placeholder="e.g. Riemar Seruelas"
+                    />
+                  </label>
+                  <label>
+                    Employee ID
+                    <input
+                      value={form.employee_id}
+                      onChange={(e) => setForm((prev) => ({ ...prev, employee_id: e.target.value }))}
+                      placeholder="Optional"
+                    />
+                  </label>
+                  <label>
+                    Department
+                    <input
+                      value={form.department}
+                      onChange={(e) => setForm((prev) => ({ ...prev, department: e.target.value }))}
+                      placeholder="e.g. Engineering"
+                    />
+                  </label>
+                  <label>
+                    Role
+                    <select
+                      value={form.role}
+                      onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value }))}
+                    >
+                      <option value="operator">Operator</option>
+                      <option value="technician">Technician</option>
+                      <option value="engineer">Engineer</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </label>
+                </>
+              )}
+              {mode === "confirm" && (
+                <div className="face-helper-text">
+                  Scan only. Name/department will be pulled from PostgreSQL based on the recognized Face API ID.
+                </div>
+              )}
               <label>
                 Machine
                 <select
@@ -1366,7 +1398,8 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
 
             {lastRegister && (
               <div className="face-result-card">
-                <strong>Registered in Face API</strong>
+                <strong>Registered in Face API + PostgreSQL</strong>
+                <span>Name: {lastRegister.operator?.person_name ?? form.person_name}</span>
                 <span>Face ID: {lastRegister.candidate?.face_api_id ?? "Check Face API response"}</span>
                 <span>Image ID: {lastRegister.candidate?.face_img_name ?? "-"}</span>
               </div>
@@ -1405,6 +1438,40 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
                 Unregister / Deactivate
               </button>
             </div>
+
+            {adminPeople.length > 0 && (
+              <div className="face-admin-table-wrap">
+                <div className="face-admin-title">Registered Faces</div>
+                <table className="face-admin-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Name</th>
+                      <th>Employee</th>
+                      <th>Department</th>
+                      <th>Machine</th>
+                      <th>Face ID</th>
+                      <th>Image ID</th>
+                      <th>Active</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adminPeople.map((row) => (
+                      <tr key={row.id}>
+                        <td>{row.id}</td>
+                        <td>{row.person_name}</td>
+                        <td>{row.employee_id || "-"}</td>
+                        <td>{row.department || "-"}</td>
+                        <td>{row.machine_name || row.machine || "-"}</td>
+                        <td>{row.face_api_id || "-"}</td>
+                        <td>{row.face_img_name || "-"}</td>
+                        <td>{row.is_active ? "Yes" : "No"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             {adminLogs.length > 0 && (
               <div className="face-admin-table-wrap">

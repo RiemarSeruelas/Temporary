@@ -17,7 +17,7 @@ const MQTT_USERNAME = process.env.MQTT_USERNAME;
 const MQTT_PASSWORD = process.env.MQTT_PASSWORD;
 const MQTT_TOPIC = process.env.MQTT_TOPIC || "sensor/data";
 
-const FACE_API_BASE_URL = process.env.FACE_API_BASE_URL || "http://172.27.1.92:5005";
+const FACE_API_BASE_URL = process.env.FACE_API_BASE_URL || "http://10.156.119.146:5005";
 const APP_NAMESPACE = process.env.APP_NAMESPACE || "riems_operator_attendance";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin2026";
 

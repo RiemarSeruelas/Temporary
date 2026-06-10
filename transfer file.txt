@@ -1,3 +1,21 @@
 Invoke-WebRequest http://localhost:5000/api/machine-check/confirm -Method POST -ContentType "application/json" -Body "{}"
 
 Invoke-WebRequest http://localhost:5178/api/machine-check/confirm -Method POST -ContentType "application/json" -Body "{}"
+
+PS C:\Users\ASUS\Downloads\Temporary2> Invoke-WebRequest http://localhost:5178/api/machine-check/confirm -Method POST -ContentType "application/json" -Body "{}"
+Invoke-WebRequest : Unable to connect to the remote server
+At line:1 char:1
++ Invoke-WebRequest http://localhost:5178/api/machine-check/confirm -Me ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:) [Invoke-WebRequest], WebException
+    + FullyQualifiedErrorId : System.Net.WebException,Microsoft.PowerShell.Commands.InvokeWebRequestCommand
+ 
+PS C:\Users\ASUS\Downloads\Temporary2> Invoke-WebRequest http://localhost:5000/api/machine-check/confirm -Method POST -ContentType "application/json" -Body "{}"
+>> 
+Invoke-WebRequest : Cannot POST /api/machine-check/confirm
+At line:1 char:1
++ Invoke-WebRequest http://localhost:5000/api/machine-check/confirm -Me ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (System.Net.HttpWebRequest:HttpWebRequest) [Invoke-WebRequest], WebException
+    + FullyQualifiedErrorId : WebCmdletWebResponseException,Microsoft.PowerShell.Commands.InvokeWebRequestCommand
+PS C:\Users\ASUS\Downloads\Temporary2> 

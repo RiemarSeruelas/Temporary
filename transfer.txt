@@ -1,20 +1,3 @@
 Failed to load resource: the server responded with a status of 500 (Internal Server Error)
-App.jsx:1141  POST http://localhost:5178/api/face/login/scan 500 (Internal Server Error)
 
- 9:01:12 AM [vite] (client) [optimizer] bundling dependencies...
-[0] Face login scan failed: [TypeError: fetch failed] {
-[0]   [cause]: ConnectTimeoutError: Connect Timeout Error (attempted address: 172.27.1.92:5005, timeout: 10000ms)
-[0]       at onConnectTimeout (node:internal/deps/undici/undici:1981:23)
-[0]       at Immediate._onImmediate (node:internal/deps/undici/undici:1947:35)
-[0]       at process.processImmediate (node:internal/timers:504:21) {
-[0]     code: 'UND_ERR_CONNECT_TIMEOUT'
-[0]   }
-[0] }
-[0] Face login scan failed: [TypeError: fetch failed] {
-[0]   [cause]: ConnectTimeoutError: Connect Timeout Error (attempted address: 172.27.1.92:5005, timeout: 10000ms)
-[0]       at onConnectTimeout (node:internal/deps/undici/undici:1981:23)
-[0]       at Immediate._onImmediate (node:internal/deps/undici/undici:1947:35)
-[0]       at process.processImmediate (node:internal/timers:504:21) {
-[0]     code: 'UND_ERR_CONNECT_TIMEOUT'
-[0]   }
-[0] }
+App.jsx:1141  POST http://localhost:5178/api/face/register 500 (Internal Server Error)

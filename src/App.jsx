@@ -1034,10 +1034,10 @@ function FaceAttendanceBar({ onOpen }) {
   return (
     <section className="face-confirm-strip">
       <div className="face-confirm-copy">
-        <strong>Operator Confirmation</strong>
-        <span>Register, face login, or admin attendance records</span>
+        <strong>Machine Check Confirmation</strong>
+        <span>Confirm machine checks with face recognition proof</span>
       </div>
-      <button className="face-confirm-btn" onClick={onOpen}>Confirm</button>
+      <button className="face-confirm-btn" onClick={onOpen}>Confirm Check</button>
     </section>
   );
 }
@@ -1048,9 +1048,11 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [stream, setStream] = useState(null);
-  const [loginCandidate, setLoginCandidate] = useState(null);
+  const [lastConfirmation, setLastConfirmation] = useState(null);
+  const [lastRegister, setLastRegister] = useState(null);
   const [adminPassword, setAdminPassword] = useState("");
   const [adminLogs, setAdminLogs] = useState([]);
+  const [unregisterFaceId, setUnregisterFaceId] = useState("");
   const [form, setForm] = useState({
     person_name: "",
     department: "",
@@ -1103,17 +1105,19 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
     setMode("menu");
     setError("");
     setStatus("");
-    setLoginCandidate(null);
+    setLastConfirmation(null);
+    setLastRegister(null);
   }
 
   function chooseMode(nextMode) {
     setMode(nextMode);
     setError("");
     setStatus("");
-    setLoginCandidate(null);
+    setLastConfirmation(null);
+    setLastRegister(null);
     setAdminLogs([]);
 
-    if (nextMode === "register" || nextMode === "login") {
+    if (nextMode === "register" || nextMode === "confirm") {
       setTimeout(startCamera, 80);
     } else {
       stopCamera();
@@ -1153,49 +1157,38 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
     return data;
   }
 
-  async function handleRegister() {
+  function validateOperatorFields() {
     if (!form.person_name.trim()) {
-      setError("Enter the person's name first.");
-      return;
+      setError("Enter the operator name first.");
+      return false;
     }
 
     if (!form.department.trim()) {
       setError("Enter the department first.");
-      return;
+      return false;
     }
 
-    setLoading(true);
-    setError("");
-    setStatus("Capturing and registering face...");
-
-    try {
-      const image = captureImage();
-      const data = await postJson("/api/face/register", { ...form, image });
-      setStatus(`Registered ${data.person?.person_name || form.person_name} for ${data.person?.machine || selectedMachineName}.`);
-      stopCamera();
-    } catch (err) {
-      setError(err.message);
-      setStatus("");
-    } finally {
-      setLoading(false);
-    }
+    return true;
   }
 
-  async function handleLoginScan() {
+  async function handleRegister() {
+    if (!validateOperatorFields()) return;
+
     setLoading(true);
     setError("");
-    setStatus("Scanning face...");
-    setLoginCandidate(null);
+    setStatus("Capturing and registering face to Face API...");
 
     try {
       const image = captureImage();
-      const data = await postJson("/api/face/login/scan", {
-        machine: form.machine,
+      const data = await postJson("/api/face/register", {
+        ...form,
+        machine_name: selectedMachineName,
         image,
       });
 
-      setLoginCandidate(data);
-      setStatus(`Recognized ${data.person.person_name} from ${data.person.department}. Machine: ${data.machine_name || selectedMachineName}.`);
+      setLastRegister(data);
+      setStatus(`Registered ${form.person_name}. Face API app_namespace should be machine_dashboard.`);
+      stopCamera();
     } catch (err) {
       setError(err.message);
       setStatus("");
@@ -1204,26 +1197,28 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
     }
   }
 
-  async function handleLoginConfirm() {
-    if (!loginCandidate) return;
+  async function handleConfirmCheck() {
+    if (!validateOperatorFields()) return;
 
     setLoading(true);
     setError("");
-    setStatus("Saving login to PostgreSQL...");
+    setStatus("Scanning face and saving machine check confirmation...");
+    setLastConfirmation(null);
 
     try {
-      const data = await postJson("/api/face/login/confirm", {
-        person_id: loginCandidate.person.id,
-        machine: form.machine,
-        face_api_id: loginCandidate.candidate.face_api_id,
-        face_img_name: loginCandidate.candidate.face_img_name,
+      const image = captureImage();
+      const data = await postJson("/api/machine-check/confirm", {
+        ...form,
+        machine_name: selectedMachineName,
+        image,
       });
 
-      setStatus(`Confirmed. ${data.log.person_name} was saved for ${data.log.machine}.`);
-      setLoginCandidate(null);
+      setLastConfirmation(data);
+      setStatus(`Confirmed. ${data.log.person_name} was saved for ${data.log.machine_name || selectedMachineName}.`);
       stopCamera();
     } catch (err) {
       setError(err.message);
+      setStatus("");
     } finally {
       setLoading(false);
     }
@@ -1232,12 +1227,40 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
   async function handleAdminLoad() {
     setLoading(true);
     setError("");
-    setStatus("Loading PostgreSQL logs...");
+    setStatus("Loading confirmation logs from PostgreSQL...");
 
     try {
-      const data = await postJson("/api/face/admin/logs", { password: adminPassword });
+      const data = await postJson("/api/machine-check/admin/logs", { password: adminPassword });
       setAdminLogs(data.logs || []);
       setStatus(`Loaded ${(data.logs || []).length} rows.`);
+    } catch (err) {
+      setError(err.message);
+      setStatus("");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleUnregister() {
+    if (!unregisterFaceId.trim()) {
+      setError("Enter Face API ID or img_name first.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setStatus("Requesting face unregister/deactivate...");
+
+    const isNumberId = /^\d+$/.test(unregisterFaceId.trim());
+
+    try {
+      const data = await postJson("/api/face/unregister", {
+        password: adminPassword,
+        face_api_id: isNumberId ? Number(unregisterFaceId.trim()) : undefined,
+        face_img_name: isNumberId ? undefined : unregisterFaceId.trim(),
+      });
+
+      setStatus(data.message || "Unregister request completed.");
     } catch (err) {
       setError(err.message);
       setStatus("");
@@ -1251,12 +1274,12 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
       <div className="face-modal" onClick={(e) => e.stopPropagation()}>
         <div className="face-modal-header">
           <div>
-            <div className="face-modal-kicker">Operator Confirmation</div>
+            <div className="face-modal-kicker">Machine Check Confirmation</div>
             <div className="face-modal-title">
               {mode === "menu" && "Choose Action"}
-              {mode === "register" && "Register Face"}
-              {mode === "login" && "Face Login"}
-              {mode === "admin" && "Admin Logs"}
+              {mode === "register" && "Register Operator Face"}
+              {mode === "confirm" && "Confirm Machine Check"}
+              {mode === "admin" && "Admin"}
             </div>
           </div>
           <button className="face-modal-close" onClick={onClose}>×</button>
@@ -1264,45 +1287,40 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
 
         {mode === "menu" && (
           <div className="face-action-grid">
-            <button className="face-action-card" onClick={() => chooseMode("register")}>
-              <strong>Register</strong>
-              <span>Add a person by face recognition</span>
+            <button className="face-action-card" onClick={() => chooseMode("confirm")}>
+              <strong>Confirm Check</strong>
+              <span>Scan face and save machine check confirmation</span>
             </button>
-            <button className="face-action-card" onClick={() => chooseMode("login")}>
-              <strong>Log In</strong>
-              <span>Scan face and confirm machine attendance</span>
+            <button className="face-action-card" onClick={() => chooseMode("register")}>
+              <strong>Register Face</strong>
+              <span>Add app_namespace to new Face API registrations</span>
             </button>
             <button className="face-action-card" onClick={() => chooseMode("admin")}>
               <strong>Admin</strong>
-              <span>View saved PostgreSQL attendance table</span>
+              <span>View confirmations and unregister faces</span>
             </button>
           </div>
         )}
 
-        {(mode === "register" || mode === "login") && (
+        {(mode === "register" || mode === "confirm") && (
           <>
             <div className="face-form-grid">
-              {mode === "register" && (
-                <>
-                  <label>
-                    Person Name
-                    <input
-                      value={form.person_name}
-                      onChange={(e) => setForm((prev) => ({ ...prev, person_name: e.target.value }))}
-                      placeholder="e.g. Riemar Seruelas"
-                    />
-                  </label>
-                  <label>
-                    Department
-                    <input
-                      value={form.department}
-                      onChange={(e) => setForm((prev) => ({ ...prev, department: e.target.value }))}
-                      placeholder="e.g. Engineering"
-                    />
-                  </label>
-                </>
-              )}
-
+              <label>
+                Operator Name
+                <input
+                  value={form.person_name}
+                  onChange={(e) => setForm((prev) => ({ ...prev, person_name: e.target.value }))}
+                  placeholder="e.g. Riemar Seruelas"
+                />
+              </label>
+              <label>
+                Department
+                <input
+                  value={form.department}
+                  onChange={(e) => setForm((prev) => ({ ...prev, department: e.target.value }))}
+                  placeholder="e.g. Engineering"
+                />
+              </label>
               <label>
                 Machine
                 <select
@@ -1326,26 +1344,31 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
               {!stream && <button className="face-secondary-btn" onClick={startCamera}>Open Camera</button>}
               {mode === "register" && (
                 <button className="face-primary-btn" onClick={handleRegister} disabled={loading || !stream}>
-                  {loading ? "Registering..." : "Register Face"}
+                  {loading ? "Registering..." : "Register Operator Face"}
                 </button>
               )}
-              {mode === "login" && !loginCandidate && (
-                <button className="face-primary-btn" onClick={handleLoginScan} disabled={loading || !stream}>
-                  {loading ? "Scanning..." : "Scan Face"}
-                </button>
-              )}
-              {mode === "login" && loginCandidate && (
-                <button className="face-primary-btn" onClick={handleLoginConfirm} disabled={loading}>
-                  {loading ? "Saving..." : "Confirm Login"}
+              {mode === "confirm" && (
+                <button className="face-primary-btn" onClick={handleConfirmCheck} disabled={loading || !stream}>
+                  {loading ? "Saving..." : "Confirm Machine Check"}
                 </button>
               )}
             </div>
 
-            {loginCandidate && (
+            {lastConfirmation && (
               <div className="face-result-card">
-                <strong>{loginCandidate.person.person_name}</strong>
-                <span>{loginCandidate.person.department}</span>
-                <span>Machine: {loginCandidate.machine_name || selectedMachineName}</span>
+                <strong>{lastConfirmation.log.person_name}</strong>
+                <span>{lastConfirmation.log.department}</span>
+                <span>Machine: {lastConfirmation.log.machine_name || selectedMachineName}</span>
+                <span>Face ID: {lastConfirmation.candidate.face_api_id}</span>
+                <span>Confidence: {lastConfirmation.candidate.confidence ?? "-"}</span>
+              </div>
+            )}
+
+            {lastRegister && (
+              <div className="face-result-card">
+                <strong>Registered in Face API</strong>
+                <span>Face ID: {lastRegister.candidate?.face_api_id ?? "Check Face API response"}</span>
+                <span>Image ID: {lastRegister.candidate?.face_img_name ?? "-"}</span>
               </div>
             )}
           </>
@@ -1363,12 +1386,23 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
                   placeholder="Enter admin password"
                 />
               </label>
+              <label>
+                Unregister Face ID / Image ID
+                <input
+                  value={unregisterFaceId}
+                  onChange={(e) => setUnregisterFaceId(e.target.value)}
+                  placeholder="e.g. 8 or img_name"
+                />
+              </label>
             </div>
 
             <div className="face-modal-actions">
               <button className="face-secondary-btn" onClick={resetToMenu}>Back</button>
               <button className="face-primary-btn" onClick={handleAdminLoad} disabled={loading}>
-                {loading ? "Loading..." : "Load PostgreSQL Table"}
+                {loading ? "Loading..." : "Load Confirmations"}
+              </button>
+              <button className="face-secondary-btn" onClick={handleUnregister} disabled={loading}>
+                Unregister / Deactivate
               </button>
             </div>
 
@@ -1378,22 +1412,26 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
                   <thead>
                     <tr>
                       <th>ID</th>
+                      <th>Confirmed At</th>
                       <th>Name</th>
                       <th>Department</th>
                       <th>Machine</th>
                       <th>Face ID</th>
-                      <th>Login At</th>
+                      <th>Image ID</th>
+                      <th>Confidence</th>
                     </tr>
                   </thead>
                   <tbody>
                     {adminLogs.map((row) => (
                       <tr key={row.id}>
                         <td>{row.id}</td>
+                        <td>{formatDateTime(row.created_at)}</td>
                         <td>{row.person_name}</td>
                         <td>{row.department}</td>
-                        <td>{row.machine}</td>
+                        <td>{row.machine_name || row.machine}</td>
                         <td>{row.face_api_id}</td>
-                        <td>{formatDateTime(row.created_at)}</td>
+                        <td>{row.face_img_name}</td>
+                        <td>{row.face_confidence ?? "-"}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -1,54 +1,59 @@
-FULL FIX NOTES
-==============
+FULL FIX: Machine Check Confirmation + Face API app_namespace
 
-This ZIP fixes the issues hit during setup:
+WHAT CHANGED
+- Removed the face_people / login mapping dependency.
+- Face API is used only for recognition.
+- Dashboard inputs operator name, department, and machine.
+- If Face API recognizes the face and app_namespace is accepted, the backend saves a machine check confirmation to PostgreSQL.
+- Register Face sends app_namespace=machine_dashboard and is_active=true to Face API.
+- Admin can view PostgreSQL confirmation logs.
+- Admin unregister/deactivate is available only if your Face API has a delete/deactivate endpoint configured in FACE_UNREGISTER_PATH.
 
-1. Root package.json JSON parse error fixed.
-2. backend/package.json is CommonJS, so server.js can use require().
-3. vite.config.js is simple and proxies /api to http://127.0.0.1:5000.
-4. Backend dotenv is forced to read backend/.env.
-5. Old Face API fallback 172.27.1.92 removed; default is http://10.156.119.146:5005.
-6. Face API payload always sends img.
-7. Face match chooses the valid result with the lowest distance.
-8. Existing PostgreSQL tables are migrated safely with ALTER TABLE ADD COLUMN IF NOT EXISTS.
-9. Register no longer depends on ON CONFLICT constraints, so old face_people tables still work.
+IMPORTANT FACE API REQUIREMENT
+The Face API /register must save these fields to Mongo:
+  app_namespace: machine_dashboard
+  is_active: true
 
-SETUP
-=====
+The Face API /search must return these fields in each candidate:
+  app_namespace
+  is_active
 
+If /search does not return app_namespace yet, set this in backend/.env temporarily:
+  APP_NAMESPACE_STRICT=false
+
+Once Face API returns app_namespace, set it back to:
+  APP_NAMESPACE_STRICT=true
+
+RUNNING
 1. Extract this ZIP into a clean folder.
-2. Copy your real assets if needed:
-   - src/assets/machine.png
-   - src/assets/zone.png
-   - public/models/mespack.glb
-
-3. Create backend/.env from backend/.env.example.
-   Make sure it contains:
-
+2. Copy your real assets into:
+   src/assets/machine.png
+   src/assets/zone.png
+   public/models/mespack.glb
+3. Copy backend/.env.example to backend/.env.
+4. Edit backend/.env:
    FACE_API_BASE_URL=http://10.156.119.146:5005
-
-4. Install and run:
-
-   cd C:\Users\ASUS\Downloads\Temporary2
+   APP_NAMESPACE=machine_dashboard
+   POSTGRES_HOST=your_postgres_ip
+   POSTGRES_DB=mydatabase
+   POSTGRES_USER=postgres
+   POSTGRES_PASSWORD=your_password
+5. Optional: run backend/setup_face_postgres.sql in pgAdmin.
+   The backend also auto-creates/migrates the confirmation table when it starts.
+6. Run:
    npm install
    cd backend
    npm install
    cd ..
    npm start
 
-5. Expected logs:
+OPEN
+Frontend: http://localhost:5178
+Backend health: http://localhost:5000/api/face/health
 
-   Backend:  http://localhost:5000
-   Frontend: http://localhost:5178
-   Face API base URL: http://10.156.119.146:5005
+EXPECTED FLOW
+Confirm Check:
+  App captures face -> Face API /search -> app_namespace check -> PostgreSQL machine_check_confirmations insert
 
-QUICK TESTS
-===========
-
-Open these in browser:
-
-http://localhost:5000/api/face/health
-http://localhost:5000/api/data
-http://localhost:5178
-
-If browser shows 502 on localhost:5178/api, backend is not running on port 5000.
+Register Face:
+  App captures face -> Face API /register with app_namespace=machine_dashboard and is_active=true

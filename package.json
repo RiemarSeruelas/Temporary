@@ -4,24 +4,24 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "start": "concurrently "npm run start:backend" "npm run start:frontend"",
-    "start:backend": "cd backend && node server.js",
+    "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
     "start:frontend": "vite",
+    "start:backend": "cd backend && node server.js",
     "dev": "vite",
-    "backend": "cd backend && node server.js",
     "build": "vite build",
+    "backend": "cd backend && node server.js",
     "preview": "vite preview"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
-    "@vitejs/plugin-react": "^6.0.1",
-    "vite": "^8.0.10",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "three": "^0.184.0"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^9.2.1",
+    "vite": "^8.0.10"
   }
 }

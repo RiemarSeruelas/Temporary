@@ -1,13 +1,39 @@
-PS C:\Users\ASUS\Downloads\Temporary2> npm.cmd start
-npm error code EJSONPARSE
-npm error JSON.parse Invalid package.json: JSONParseError: Expected ',' or '}' after property value in JSON at position 159 (line 7 column 29) while parsing near "...rt\": \"concurrently \"npm run start:backen..."
-npm error JSON.parse Failed to parse JSON data.
-npm error JSON.parse Note: package.json must be actual JSON, not just JavaScript.
-npm error A complete log of this run can be found in: C:\Users\ASUS\AppData\Local\npm-cache\_logs\2026-06-10T01_54_44_503Z-debug-0.log
-PS C:\Users\ASUS\Downloads\Temporary2> npm.cmd install
-npm error code EJSONPARSE
-npm error JSON.parse Invalid package.json: JSONParseError: Expected ',' or '}' after property value in JSON at position 159 (line 7 column 29) while parsing near "...rt\": \"concurrently \"npm run start:backen..."
-npm error JSON.parse Failed to parse JSON data.
-npm error JSON.parse Note: package.json must be actual JSON, not just JavaScript.
-npm error A complete log of this run can be found in: C:\Users\ASUS\AppData\Local\npm-cache\_logs\2026-06-10T01_54_54_313Z-debug-0.log
-PS C:\Users\ASUS\Downloads\Temporary2> 
+INSERT INTO app.face_people (
+    person_name,
+    department,
+    machine,
+    face_api_id,
+    face_img_name
+)
+VALUES (
+    'Your Name Here',
+    'Engineering',
+    'mespack',
+    9,
+    'f3ed3c72-29ce-4592-b477-2934c6c24492'
+)
+ON CONFLICT (face_api_id)
+DO UPDATE SET
+    person_name = EXCLUDED.person_name,
+    department = EXCLUDED.department,
+    machine = EXCLUDED.machine,
+    face_img_name = EXCLUDED.face_img_name,
+    updated_at = CURRENT_TIMESTAMP;
+
+    function firstFaceCandidate(apiResponse) {
+  const rows = apiResponse?.results?.[0];
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return null;
+  }
+
+  const validRows = rows
+    .filter((row) => {
+      const distance = Number(row.distance);
+      const threshold = Number(row.threshold);
+      return Number.isFinite(distance) && Number.isFinite(threshold) && distance <= threshold;
+    })
+    .sort((a, b) => Number(a.distance) - Number(b.distance));
+
+  return validRows[0] || null;
+}

@@ -1,22 +1,60 @@
 {
-  "name": "TestUser",
-  "identity": "TestUser",
-  "person_id": "TestUser",
-  "model_name": "SFace",
-  "detector_backend": "yunet",
-  "align": true,
-  "l2_normalize": true,
-  "distance_metric": "cosine",
-  "search_method": "exact",
-  "img": "data:image/jpeg;base64,PASTE_BASE64_IMAGE_HERE"
-}
-
-{
-  "model_name": "SFace",
-  "detector_backend": "yunet",
-  "align": true,
-  "l2_normalize": true,
-  "distance_metric": "cosine",
-  "search_method": "exact",
-  "img": "data:image/jpeg;base64,PASTE_BASE64_IMAGE_HERE"
+    "results": [
+        [
+            {
+                "_id": "6a28c8cc64c114337bf5a01c",
+                "aligned": true,
+                "confidence": 100.0,
+                "detector_backend": "yunet",
+                "distance": 0.0,
+                "distance_metric": "cosine",
+                "id": 9,
+                "img_name": "f3ed3c72-29ce-4592-b477-2934c6c24492",
+                "l2_normalized": true,
+                "model_name": "SFace",
+                "search_method": "exact",
+                "target_h": 424,
+                "target_w": 340,
+                "target_x": 480,
+                "target_y": 200,
+                "threshold": 0.593
+            },
+            {
+                "_id": "6a27c19d64c114337bf5a001",
+                "aligned": true,
+                "confidence": 72.25,
+                "detector_backend": "yunet",
+                "distance": 0.39011651009428827,
+                "distance_metric": "cosine",
+                "id": 8,
+                "img_name": "0c9eb42d-4621-4325-99ed-ed34d570f944",
+                "l2_normalized": true,
+                "model_name": "SFace",
+                "search_method": "exact",
+                "target_h": 424,
+                "target_w": 340,
+                "target_x": 480,
+                "target_y": 200,
+                "threshold": 0.593
+            },
+            {
+                "_id": "6a262eab64c114337bf59fdb",
+                "aligned": true,
+                "confidence": 70.64,
+                "detector_backend": "yunet",
+                "distance": 0.4027720103628165,
+                "distance_metric": "cosine",
+                "id": 7,
+                "img_name": "2ac3d632-c9fb-45c1-83ab-1714801b47d2",
+                "l2_normalized": true,
+                "model_name": "SFace",
+                "search_method": "exact",
+                "target_h": 424,
+                "target_w": 340,
+                "target_x": 480,
+                "target_y": 200,
+                "threshold": 0.593
+            }
+        ]
+    ]
 }

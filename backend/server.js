@@ -177,23 +177,47 @@ function normalizeHighBytePayload(rawPayload) {
 }
 
 async function faceApiPost(path, body) {
-  const response = await fetch(`${FACE_API_BASE_URL}${path}`, {
+  const url = `${FACE_API_BASE_URL}${path}`;
+
+  async function readResponse(response) {
+    const text = await response.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { raw: text };
+    }
+  }
+
+  // First try JSON. This is what the Face API normally accepts.
+  let response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 
-  const text = await response.text();
-  let data;
+  let data = await readResponse(response);
 
-  try {
-    data = JSON.parse(text);
-  } catch {
-    data = { raw: text };
+  // Some Face API builds are picky and only read form data for /register.
+  // If the server says img is missing, retry once as FormData.
+  const errorText = String(data?.error || data?.message || data?.detail || data?.raw || "").toLowerCase();
+  if (!response.ok && errorText.includes("img") && errorText.includes("not found")) {
+    const form = new FormData();
+    for (const [key, value] of Object.entries(body || {})) {
+      if (value === undefined || value === null) continue;
+      form.append(key, typeof value === "boolean" ? String(value) : value);
+    }
+
+    response = await fetch(url, {
+      method: "POST",
+      body: form,
+    });
+
+    data = await readResponse(response);
   }
 
   if (!response.ok) {
-    throw new Error(data.error || data.message || `Face API ${path} failed: ${response.status}`);
+    const keys = Object.keys(body || {}).join(", ");
+    throw new Error(data.error || data.message || data.detail || data.raw || `Face API ${path} failed: ${response.status}. Sent keys: ${keys}`);
   }
 
   return data;
@@ -217,14 +241,26 @@ function firstFaceCandidate(apiResponse) {
   };
 }
 
+function normalizeImageInput(image) {
+  if (!image || typeof image !== "string") return "";
+  const trimmed = image.trim();
+  if (!trimmed) return "";
+  if (trimmed.startsWith("data:image/")) return trimmed;
+  return `data:image/jpeg;base64,${trimmed}`;
+}
+
 function facePayload(image, extra = {}) {
+  const normalizedImage = normalizeImageInput(image);
+
   return {
-    img: image,
     model_name: "SFace",
     detector_backend: "yunet",
     align: true,
     l2_normalize: true,
     ...extra,
+
+    // Keep img at the end so no extra field can accidentally overwrite it.
+    img: normalizedImage,
   };
 }
 
@@ -404,10 +440,11 @@ app.get("/data-machine2", (req, res) => {
 
 app.post("/api/face/register", async (req, res) => {
   try {
-    const { person_name, department, machine, image } = req.body;
+    const { person_name, department, machine } = req.body;
+    const image = req.body.image || req.body.img;
 
     if (!person_name || !department || !machine || !image) {
-      return res.status(400).json({ error: "person_name, department, machine, and image are required." });
+      return res.status(400).json({ error: "person_name, department, machine, and image/img are required." });
     }
 
     const registerResponse = await faceApiPost("/register", facePayload(image, {
@@ -457,10 +494,11 @@ app.post("/api/face/register", async (req, res) => {
 
 app.post("/api/face/login/scan", async (req, res) => {
   try {
-    const { machine, image } = req.body;
+    const { machine } = req.body;
+    const image = req.body.image || req.body.img;
 
     if (!machine || !image) {
-      return res.status(400).json({ error: "machine and image are required." });
+      return res.status(400).json({ error: "machine and image/img are required." });
     }
 
     const searchResponse = await faceApiPost("/search", searchPayload(image));

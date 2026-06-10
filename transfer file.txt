@@ -1,500 +1,82 @@
-✅ Machine image loaded
-App.jsx:261  GET http://localhost:5178/api/data net::ERR_ABORTED 502 (Bad Gateway)
-(anonymous) @ App.jsx:261
-setInterval
-(anonymous) @ App.jsx:281
-react_stack_bottom_frame @ react-dom-client.development.js:25989
-runWithFiberInDEV @ react-dom-client.development.js:871
-commitHookEffectListMount @ react-dom-client.development.js:13249
-commitHookPassiveMountEffects @ react-dom-client.development.js:13336
-reconnectPassiveEffects @ react-dom-client.development.js:15832
-recursivelyTraverseReconnectPassiveEffects @ react-dom-client.development.js:15784
-reconnectPassiveEffects @ react-dom-client.development.js:15885
-doubleInvokeEffectsOnFiber @ react-dom-client.development.js:18703
-runWithFiberInDEV @ react-dom-client.development.js:871
-recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18667
-commitDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18712
-flushPassiveEffects @ react-dom-client.development.js:18439
-(anonymous) @ react-dom-client.development.js:17923
-performWorkUntilDeadline @ scheduler.development.js:45
-<App>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ main.jsx:8
-App.jsx:261  GET http://localhost:5178/api/data net::ERR_ABORTED 502 (Bad Gateway)
-(anonymous) @ App.jsx:261
-setInterval
-(anonymous) @ App.jsx:281
-react_stack_bottom_frame @ react-dom-client.development.js:25989
-runWithFiberInDEV @ react-dom-client.development.js:871
-commitHookEffectListMount @ react-dom-client.development.js:13249
-commitHookPassiveMountEffects @ react-dom-client.development.js:13336
-reconnectPassiveEffects @ react-dom-client.development.js:15832
-recursivelyTraverseReconnectPassiveEffects @ react-dom-client.development.js:15784
-reconnectPassiveEffects @ react-dom-client.development.js:15885
-doubleInvokeEffectsOnFiber @ react-dom-client.development.js:18703
-runWithFiberInDEV @ react-dom-client.development.js:871
-recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18667
-commitDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18712
-flushPassiveEffects @ react-dom-client.development.js:18439
-(anonymous) @ react-dom-client.development.js:17923
-performWorkUntilDeadline @ scheduler.development.js:45
-<App>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ main.jsx:8
-App.jsx:261  GET http://localhost:5178/api/data net::ERR_ABORTED 502 (Bad Gateway)
-(anonymous) @ App.jsx:261
-setInterval
-(anonymous) @ App.jsx:281
-react_stack_bottom_frame @ react-dom-client.development.js:25989
-runWithFiberInDEV @ react-dom-client.development.js:871
-commitHookEffectListMount @ react-dom-client.development.js:13249
-commitHookPassiveMountEffects @ react-dom-client.development.js:13336
-reconnectPassiveEffects @ react-dom-client.development.js:15832
-recursivelyTraverseReconnectPassiveEffects @ react-dom-client.development.js:15784
-reconnectPassiveEffects @ react-dom-client.development.js:15885
-doubleInvokeEffectsOnFiber @ react-dom-client.development.js:18703
-runWithFiberInDEV @ react-dom-client.development.js:871
-recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18667
-commitDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18712
-flushPassiveEffects @ react-dom-client.development.js:18439
-(anonymous) @ react-dom-client.development.js:17923
-performWorkUntilDeadline @ scheduler.development.js:45
-<App>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ main.jsx:8
-App.jsx:261  GET http://localhost:5178/api/data net::ERR_ABORTED 502 (Bad Gateway)
-(anonymous) @ App.jsx:261
-setInterval
-(anonymous) @ App.jsx:281
-react_stack_bottom_frame @ react-dom-client.development.js:25989
-runWithFiberInDEV @ react-dom-client.development.js:871
-commitHookEffectListMount @ react-dom-client.development.js:13249
-commitHookPassiveMountEffects @ react-dom-client.development.js:13336
-reconnectPassiveEffects @ react-dom-client.development.js:15832
-recursivelyTraverseReconnectPassiveEffects @ react-dom-client.development.js:15784
-reconnectPassiveEffects @ react-dom-client.development.js:15885
-doubleInvokeEffectsOnFiber @ react-dom-client.development.js:18703
-runWithFiberInDEV @ react-dom-client.development.js:871
-recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18667
-commitDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18712
-flushPassiveEffects @ react-dom-client.development.js:18439
-(anonymous) @ react-dom-client.development.js:17923
-performWorkUntilDeadline @ scheduler.development.js:45
-<App>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ main.jsx:8
-App.jsx:261  GET http://localhost:5178/api/data 502 (Bad Gateway)
-(anonymous) @ App.jsx:261
-setInterval
-(anonymous) @ App.jsx:281
-react_stack_bottom_frame @ react-dom-client.development.js:25989
-runWithFiberInDEV @ react-dom-client.development.js:871
-commitHookEffectListMount @ react-dom-client.development.js:13249
-commitHookPassiveMountEffects @ react-dom-client.development.js:13336
-reconnectPassiveEffects @ react-dom-client.development.js:15832
-recursivelyTraverseReconnectPassiveEffects @ react-dom-client.development.js:15784
-reconnectPassiveEffects @ react-dom-client.development.js:15885
-doubleInvokeEffectsOnFiber @ react-dom-client.development.js:18703
-runWithFiberInDEV @ react-dom-client.development.js:871
-recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18667
-commitDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18712
-flushPassiveEffects @ react-dom-client.development.js:18439
-(anonymous) @ react-dom-client.development.js:17923
-performWorkUntilDeadline @ scheduler.development.js:45
-<App>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ main.jsx:8
-App.jsx:261  GET http://localhost:5178/api/data net::ERR_ABORTED 502 (Bad Gateway)
-(anonymous) @ App.jsx:261
-setInterval
-(anonymous) @ App.jsx:281
-react_stack_bottom_frame @ react-dom-client.development.js:25989
-runWithFiberInDEV @ react-dom-client.development.js:871
-commitHookEffectListMount @ react-dom-client.development.js:13249
-commitHookPassiveMountEffects @ react-dom-client.development.js:13336
-reconnectPassiveEffects @ react-dom-client.development.js:15832
-recursivelyTraverseReconnectPassiveEffects @ react-dom-client.development.js:15784
-reconnectPassiveEffects @ react-dom-client.development.js:15885
-doubleInvokeEffectsOnFiber @ react-dom-client.development.js:18703
-runWithFiberInDEV @ react-dom-client.development.js:871
-recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18667
-commitDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18712
-flushPassiveEffects @ react-dom-client.development.js:18439
-(anonymous) @ react-dom-client.development.js:17923
-performWorkUntilDeadline @ scheduler.development.js:45
-<App>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ main.jsx:8
-App.jsx:261  GET http://localhost:5178/api/data 502 (Bad Gateway)
-(anonymous) @ App.jsx:261
-setInterval
-(anonymous) @ App.jsx:281
-react_stack_bottom_frame @ react-dom-client.development.js:25989
-runWithFiberInDEV @ react-dom-client.development.js:871
-commitHookEffectListMount @ react-dom-client.development.js:13249
-commitHookPassiveMountEffects @ react-dom-client.development.js:13336
-reconnectPassiveEffects @ react-dom-client.development.js:15832
-recursivelyTraverseReconnectPassiveEffects @ react-dom-client.development.js:15784
-reconnectPassiveEffects @ react-dom-client.development.js:15885
-doubleInvokeEffectsOnFiber @ react-dom-client.development.js:18703
-runWithFiberInDEV @ react-dom-client.development.js:871
-recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18667
-commitDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18712
-flushPassiveEffects @ react-dom-client.development.js:18439
-(anonymous) @ react-dom-client.development.js:17923
-performWorkUntilDeadline @ scheduler.development.js:45
-<App>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ main.jsx:8
-App.jsx:1141  POST http://localhost:5178/api/face/login/scan 502 (Bad Gateway)
-postJson @ App.jsx:1141
-handleLoginScan @ App.jsx:1192
-executeDispatch @ react-dom-client.development.js:19116
-runWithFiberInDEV @ react-dom-client.development.js:871
-processDispatchQueue @ react-dom-client.development.js:19166
-(anonymous) @ react-dom-client.development.js:19767
-batchedUpdates$1 @ react-dom-client.development.js:3255
-dispatchEventForPluginEventSystem @ react-dom-client.development.js:19320
-dispatchEvent @ react-dom-client.development.js:23585
-dispatchDiscreteEvent @ react-dom-client.development.js:23553
-<button>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-FaceAttendanceModal @ App.jsx:1333
-react_stack_bottom_frame @ react-dom-client.development.js:25904
-renderWithHooksAgain @ react-dom-client.development.js:7762
-renderWithHooks @ react-dom-client.development.js:7674
-updateFunctionComponent @ react-dom-client.development.js:10166
-beginWork @ react-dom-client.development.js:11778
-runWithFiberInDEV @ react-dom-client.development.js:871
-performUnitOfWork @ react-dom-client.development.js:17641
-workLoopSync @ react-dom-client.development.js:17469
-renderRootSync @ react-dom-client.development.js:17450
-performWorkOnRoot @ react-dom-client.development.js:16504
-performSyncWorkOnRoot @ react-dom-client.development.js:18972
-flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
-processRootScheduleInMicrotask @ react-dom-client.development.js:18853
-(anonymous) @ react-dom-client.development.js:18991
-<FaceAttendanceModal>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ App.jsx:826
-react_stack_bottom_frame @ react-dom-client.development.js:25904
-renderWithHooksAgain @ react-dom-client.development.js:7762
-renderWithHooks @ react-dom-client.development.js:7674
-updateFunctionComponent @ react-dom-client.development.js:10166
-beginWork @ react-dom-client.development.js:11778
-runWithFiberInDEV @ react-dom-client.development.js:871
-performUnitOfWork @ react-dom-client.development.js:17641
-workLoopSync @ react-dom-client.development.js:17469
-renderRootSync @ react-dom-client.development.js:17450
-performWorkOnRoot @ react-dom-client.development.js:16504
-performSyncWorkOnRoot @ react-dom-client.development.js:18972
-flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
-processRootScheduleInMicrotask @ react-dom-client.development.js:18853
-(anonymous) @ react-dom-client.development.js:18991
-<App>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ main.jsx:8
-App.jsx:1141  POST http://localhost:5178/api/face/login/scan 502 (Bad Gateway)
-postJson @ App.jsx:1141
-handleLoginScan @ App.jsx:1192
-executeDispatch @ react-dom-client.development.js:19116
-runWithFiberInDEV @ react-dom-client.development.js:871
-processDispatchQueue @ react-dom-client.development.js:19166
-(anonymous) @ react-dom-client.development.js:19767
-batchedUpdates$1 @ react-dom-client.development.js:3255
-dispatchEventForPluginEventSystem @ react-dom-client.development.js:19320
-dispatchEvent @ react-dom-client.development.js:23585
-dispatchDiscreteEvent @ react-dom-client.development.js:23553
-<button>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-FaceAttendanceModal @ App.jsx:1333
-react_stack_bottom_frame @ react-dom-client.development.js:25904
-renderWithHooksAgain @ react-dom-client.development.js:7762
-renderWithHooks @ react-dom-client.development.js:7674
-updateFunctionComponent @ react-dom-client.development.js:10166
-beginWork @ react-dom-client.development.js:11778
-runWithFiberInDEV @ react-dom-client.development.js:871
-performUnitOfWork @ react-dom-client.development.js:17641
-workLoopSync @ react-dom-client.development.js:17469
-renderRootSync @ react-dom-client.development.js:17450
-performWorkOnRoot @ react-dom-client.development.js:16504
-performSyncWorkOnRoot @ react-dom-client.development.js:18972
-flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
-processRootScheduleInMicrotask @ react-dom-client.development.js:18853
-(anonymous) @ react-dom-client.development.js:18991
-<FaceAttendanceModal>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ App.jsx:826
-react_stack_bottom_frame @ react-dom-client.development.js:25904
-renderWithHooksAgain @ react-dom-client.development.js:7762
-renderWithHooks @ react-dom-client.development.js:7674
-updateFunctionComponent @ react-dom-client.development.js:10166
-beginWork @ react-dom-client.development.js:11778
-runWithFiberInDEV @ react-dom-client.development.js:871
-performUnitOfWork @ react-dom-client.development.js:17641
-workLoopSync @ react-dom-client.development.js:17469
-renderRootSync @ react-dom-client.development.js:17450
-performWorkOnRoot @ react-dom-client.development.js:16504
-performSyncWorkOnRoot @ react-dom-client.development.js:18972
-flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
-processRootScheduleInMicrotask @ react-dom-client.development.js:18853
-(anonymous) @ react-dom-client.development.js:18991
-<App>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ main.jsx:8
-App.jsx:1141  POST http://localhost:5178/api/face/login/scan 502 (Bad Gateway)
-postJson @ App.jsx:1141
-handleLoginScan @ App.jsx:1192
-executeDispatch @ react-dom-client.development.js:19116
-runWithFiberInDEV @ react-dom-client.development.js:871
-processDispatchQueue @ react-dom-client.development.js:19166
-(anonymous) @ react-dom-client.development.js:19767
-batchedUpdates$1 @ react-dom-client.development.js:3255
-dispatchEventForPluginEventSystem @ react-dom-client.development.js:19320
-dispatchEvent @ react-dom-client.development.js:23585
-dispatchDiscreteEvent @ react-dom-client.development.js:23553
-<button>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-FaceAttendanceModal @ App.jsx:1333
-react_stack_bottom_frame @ react-dom-client.development.js:25904
-renderWithHooksAgain @ react-dom-client.development.js:7762
-renderWithHooks @ react-dom-client.development.js:7674
-updateFunctionComponent @ react-dom-client.development.js:10166
-beginWork @ react-dom-client.development.js:11778
-runWithFiberInDEV @ react-dom-client.development.js:871
-performUnitOfWork @ react-dom-client.development.js:17641
-workLoopSync @ react-dom-client.development.js:17469
-renderRootSync @ react-dom-client.development.js:17450
-performWorkOnRoot @ react-dom-client.development.js:16504
-performSyncWorkOnRoot @ react-dom-client.development.js:18972
-flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
-processRootScheduleInMicrotask @ react-dom-client.development.js:18853
-(anonymous) @ react-dom-client.development.js:18991
-<FaceAttendanceModal>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ App.jsx:826
-react_stack_bottom_frame @ react-dom-client.development.js:25904
-renderWithHooksAgain @ react-dom-client.development.js:7762
-renderWithHooks @ react-dom-client.development.js:7674
-updateFunctionComponent @ react-dom-client.development.js:10166
-beginWork @ react-dom-client.development.js:11778
-runWithFiberInDEV @ react-dom-client.development.js:871
-performUnitOfWork @ react-dom-client.development.js:17641
-workLoopSync @ react-dom-client.development.js:17469
-renderRootSync @ react-dom-client.development.js:17450
-performWorkOnRoot @ react-dom-client.development.js:16504
-performSyncWorkOnRoot @ react-dom-client.development.js:18972
-flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
-processRootScheduleInMicrotask @ react-dom-client.development.js:18853
-(anonymous) @ react-dom-client.development.js:18991
-<App>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ main.jsx:8
-App.jsx:261  GET http://localhost:5178/api/data 502 (Bad Gateway)
-(anonymous) @ App.jsx:261
-setInterval
-(anonymous) @ App.jsx:281
-react_stack_bottom_frame @ react-dom-client.development.js:25989
-runWithFiberInDEV @ react-dom-client.development.js:871
-commitHookEffectListMount @ react-dom-client.development.js:13249
-commitHookPassiveMountEffects @ react-dom-client.development.js:13336
-reconnectPassiveEffects @ react-dom-client.development.js:15832
-recursivelyTraverseReconnectPassiveEffects @ react-dom-client.development.js:15784
-reconnectPassiveEffects @ react-dom-client.development.js:15885
-doubleInvokeEffectsOnFiber @ react-dom-client.development.js:18703
-runWithFiberInDEV @ react-dom-client.development.js:871
-recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18667
-commitDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18712
-flushPassiveEffects @ react-dom-client.development.js:18439
-(anonymous) @ react-dom-client.development.js:17923
-performWorkUntilDeadline @ scheduler.development.js:45
-<App>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ main.jsx:8
-App.jsx:261  GET http://localhost:5178/api/data net::ERR_ABORTED 502 (Bad Gateway)
-(anonymous) @ App.jsx:261
-setInterval
-(anonymous) @ App.jsx:281
-react_stack_bottom_frame @ react-dom-client.development.js:25989
-runWithFiberInDEV @ react-dom-client.development.js:871
-commitHookEffectListMount @ react-dom-client.development.js:13249
-commitHookPassiveMountEffects @ react-dom-client.development.js:13336
-reconnectPassiveEffects @ react-dom-client.development.js:15832
-recursivelyTraverseReconnectPassiveEffects @ react-dom-client.development.js:15784
-reconnectPassiveEffects @ react-dom-client.development.js:15885
-doubleInvokeEffectsOnFiber @ react-dom-client.development.js:18703
-runWithFiberInDEV @ react-dom-client.development.js:871
-recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18667
-commitDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18712
-flushPassiveEffects @ react-dom-client.development.js:18439
-(anonymous) @ react-dom-client.development.js:17923
-performWorkUntilDeadline @ scheduler.development.js:45
-<App>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ main.jsx:8
-App.jsx:1141  POST http://localhost:5178/api/face/login/scan 502 (Bad Gateway)
-postJson @ App.jsx:1141
-handleLoginScan @ App.jsx:1192
-executeDispatch @ react-dom-client.development.js:19116
-runWithFiberInDEV @ react-dom-client.development.js:871
-processDispatchQueue @ react-dom-client.development.js:19166
-(anonymous) @ react-dom-client.development.js:19767
-batchedUpdates$1 @ react-dom-client.development.js:3255
-dispatchEventForPluginEventSystem @ react-dom-client.development.js:19320
-dispatchEvent @ react-dom-client.development.js:23585
-dispatchDiscreteEvent @ react-dom-client.development.js:23553
-<button>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-FaceAttendanceModal @ App.jsx:1333
-react_stack_bottom_frame @ react-dom-client.development.js:25904
-renderWithHooksAgain @ react-dom-client.development.js:7762
-renderWithHooks @ react-dom-client.development.js:7674
-updateFunctionComponent @ react-dom-client.development.js:10166
-beginWork @ react-dom-client.development.js:11778
-runWithFiberInDEV @ react-dom-client.development.js:871
-performUnitOfWork @ react-dom-client.development.js:17641
-workLoopSync @ react-dom-client.development.js:17469
-renderRootSync @ react-dom-client.development.js:17450
-performWorkOnRoot @ react-dom-client.development.js:16504
-performSyncWorkOnRoot @ react-dom-client.development.js:18972
-flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
-processRootScheduleInMicrotask @ react-dom-client.development.js:18853
-(anonymous) @ react-dom-client.development.js:18991
-<FaceAttendanceModal>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ App.jsx:826
-react_stack_bottom_frame @ react-dom-client.development.js:25904
-renderWithHooksAgain @ react-dom-client.development.js:7762
-renderWithHooks @ react-dom-client.development.js:7674
-updateFunctionComponent @ react-dom-client.development.js:10166
-beginWork @ react-dom-client.development.js:11778
-runWithFiberInDEV @ react-dom-client.development.js:871
-performUnitOfWork @ react-dom-client.development.js:17641
-workLoopSync @ react-dom-client.development.js:17469
-renderRootSync @ react-dom-client.development.js:17450
-performWorkOnRoot @ react-dom-client.development.js:16504
-performSyncWorkOnRoot @ react-dom-client.development.js:18972
-flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
-processRootScheduleInMicrotask @ react-dom-client.development.js:18853
-(anonymous) @ react-dom-client.development.js:18991
-<App>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ main.jsx:8
-App.jsx:1141  POST http://localhost:5178/api/face/login/scan 502 (Bad Gateway)
-postJson @ App.jsx:1141
-handleLoginScan @ App.jsx:1192
-executeDispatch @ react-dom-client.development.js:19116
-runWithFiberInDEV @ react-dom-client.development.js:871
-processDispatchQueue @ react-dom-client.development.js:19166
-(anonymous) @ react-dom-client.development.js:19767
-batchedUpdates$1 @ react-dom-client.development.js:3255
-dispatchEventForPluginEventSystem @ react-dom-client.development.js:19320
-dispatchEvent @ react-dom-client.development.js:23585
-dispatchDiscreteEvent @ react-dom-client.development.js:23553
-<button>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-FaceAttendanceModal @ App.jsx:1333
-react_stack_bottom_frame @ react-dom-client.development.js:25904
-renderWithHooksAgain @ react-dom-client.development.js:7762
-renderWithHooks @ react-dom-client.development.js:7674
-updateFunctionComponent @ react-dom-client.development.js:10166
-beginWork @ react-dom-client.development.js:11778
-runWithFiberInDEV @ react-dom-client.development.js:871
-performUnitOfWork @ react-dom-client.development.js:17641
-workLoopSync @ react-dom-client.development.js:17469
-renderRootSync @ react-dom-client.development.js:17450
-performWorkOnRoot @ react-dom-client.development.js:16504
-performSyncWorkOnRoot @ react-dom-client.development.js:18972
-flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
-processRootScheduleInMicrotask @ react-dom-client.development.js:18853
-(anonymous) @ react-dom-client.development.js:18991
-<FaceAttendanceModal>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ App.jsx:826
-react_stack_bottom_frame @ react-dom-client.development.js:25904
-renderWithHooksAgain @ react-dom-client.development.js:7762
-renderWithHooks @ react-dom-client.development.js:7674
-updateFunctionComponent @ react-dom-client.development.js:10166
-beginWork @ react-dom-client.development.js:11778
-runWithFiberInDEV @ react-dom-client.development.js:871
-performUnitOfWork @ react-dom-client.development.js:17641
-workLoopSync @ react-dom-client.development.js:17469
-renderRootSync @ react-dom-client.development.js:17450
-performWorkOnRoot @ react-dom-client.development.js:16504
-performSyncWorkOnRoot @ react-dom-client.development.js:18972
-flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
-processRootScheduleInMicrotask @ react-dom-client.development.js:18853
-(anonymous) @ react-dom-client.development.js:18991
-<App>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ main.jsx:8
-App.jsx:261  GET http://localhost:5178/api/data net::ERR_ABORTED 502 (Bad Gateway)
-(anonymous) @ App.jsx:261
-setInterval
-(anonymous) @ App.jsx:281
-react_stack_bottom_frame @ react-dom-client.development.js:25989
-runWithFiberInDEV @ react-dom-client.development.js:871
-commitHookEffectListMount @ react-dom-client.development.js:13249
-commitHookPassiveMountEffects @ react-dom-client.development.js:13336
-reconnectPassiveEffects @ react-dom-client.development.js:15832
-recursivelyTraverseReconnectPassiveEffects @ react-dom-client.development.js:15784
-reconnectPassiveEffects @ react-dom-client.development.js:15885
-doubleInvokeEffectsOnFiber @ react-dom-client.development.js:18703
-runWithFiberInDEV @ react-dom-client.development.js:871
-recursivelyTraverseAndDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18667
-commitDoubleInvokeEffectsInDEV @ react-dom-client.development.js:18712
-flushPassiveEffects @ react-dom-client.development.js:18439
-(anonymous) @ react-dom-client.development.js:17923
-performWorkUntilDeadline @ scheduler.development.js:45
-<App>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ main.jsx:8
-App.jsx:1141  POST http://localhost:5178/api/face/login/scan 502 (Bad Gateway)
-postJson @ App.jsx:1141
-handleLoginScan @ App.jsx:1192
-executeDispatch @ react-dom-client.development.js:19116
-runWithFiberInDEV @ react-dom-client.development.js:871
-processDispatchQueue @ react-dom-client.development.js:19166
-(anonymous) @ react-dom-client.development.js:19767
-batchedUpdates$1 @ react-dom-client.development.js:3255
-dispatchEventForPluginEventSystem @ react-dom-client.development.js:19320
-dispatchEvent @ react-dom-client.development.js:23585
-dispatchDiscreteEvent @ react-dom-client.development.js:23553
-<button>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-FaceAttendanceModal @ App.jsx:1333
-react_stack_bottom_frame @ react-dom-client.development.js:25904
-renderWithHooksAgain @ react-dom-client.development.js:7762
-renderWithHooks @ react-dom-client.development.js:7674
-updateFunctionComponent @ react-dom-client.development.js:10166
-beginWork @ react-dom-client.development.js:11778
-runWithFiberInDEV @ react-dom-client.development.js:871
-performUnitOfWork @ react-dom-client.development.js:17641
-workLoopSync @ react-dom-client.development.js:17469
-renderRootSync @ react-dom-client.development.js:17450
-performWorkOnRoot @ react-dom-client.development.js:16504
-performSyncWorkOnRoot @ react-dom-client.development.js:18972
-flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
-processRootScheduleInMicrotask @ react-dom-client.development.js:18853
-(anonymous) @ react-dom-client.development.js:18991
-<FaceAttendanceModal>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ App.jsx:826
-react_stack_bottom_frame @ react-dom-client.development.js:25904
-renderWithHooksAgain @ react-dom-client.development.js:7762
-renderWithHooks @ react-dom-client.development.js:7674
-updateFunctionComponent @ react-dom-client.development.js:10166
-beginWork @ react-dom-client.development.js:11778
-runWithFiberInDEV @ react-dom-client.development.js:871
-performUnitOfWork @ react-dom-client.development.js:17641
-workLoopSync @ react-dom-client.development.js:17469
-renderRootSync @ react-dom-client.development.js:17450
-performWorkOnRoot @ react-dom-client.development.js:16504
-performSyncWorkOnRoot @ react-dom-client.development.js:18972
-flushSyncWorkAcrossRoots_impl @ react-dom-client.development.js:18814
-processRootScheduleInMicrotask @ react-dom-client.development.js:18853
-(anonymous) @ react-dom-client.development.js:18991
-<App>
-(anonymous) @ react-jsx-dev-runtime.development.js:335
-(anonymous) @ main.jsx:8
-App.jsx:261  GET http://localhost:5178/api/data net::ERR_ABORTED 502 (Bad Gateway)
+  {"status":"DIAGNOSTIC","mqttConnected":true,"topic":"sensor/data","lastUpdated":"2026-05-26T07:38:25.225Z","data":{"_name":"StatusCheck_Instance","_model":"StatusCheck","_timestamp":1779780936925,"area":"Dressings","machine":"Mespack Filler","doors":[{"doorNo":"01","doorName":"Unwinder Door 1","doorTagName":"SFI_Door1","diagnosticTagName":"I_Door1Diagnostic","doorValue":true,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"02","doorName":"Unwinder Door 2","doorTagName":"SFI_Door2","diagnosticTagName":"I_Door2Diagnostic","doorValue":true,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"03","doorName":"Machine Door 3","doorTagName":"SFI_Door3","diagnosticTagName":"I_Door3Diagnostic","doorValue":false,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"04","doorName":"Machine Door 4","doorTagName":"SFI_Door4","diagnosticTagName":"I_Door4Diagnostic","doorValue":false,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"05","doorName":"Machine Door 5","doorTagName":"SFI_Door5","diagnosticTagName":"I_Door5Diagnostic","doorValue":false,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"06","doorName":"Machine Door 6","doorTagName":"SFI_Door6","diagnosticTagName":"I_Door6Diagnostic","doorValue":false,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"07","doorName":"Machine Door 7","doorTagName":"SFI_Door7","diagnosticTagName":"I_Door7Diagnostic","doorValue":false,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"08","doorName":"Machine Door 8","doorTagName":"SFI_Door8","diagnosticTagName":"I_Door8Diagnostic","doorValue":false,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"09","doorName":"Machine Door 9","doorTagName":"SFI_Door9","diagnosticTagName":"I_Door9Diagnostic","doorValue":false,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"10","doorName":"Machine Door 10","doorTagName":"SFI_Door10","diagnosticTagName":"I_Door10Diagnostic","doorValue":false,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"11","doorName":"Machine Door 11","doorTagName":"SFI_Door11","diagnosticTagName":"I_Door11Diagnostic","doorValue":false,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"12","doorName":"Machine Door 12","doorTagName":"SFI_Door12","diagnosticTagName":"I_Door12Diagnostic","doorValue":false,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"13","doorName":"Unwinder Door 13","doorTagName":"SFI_Door13","diagnosticTagName":"I_Door13Diagnostic","doorValue":false,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"14","doorName":"Unwinder Door 14","doorTagName":"SFI_Door14","diagnosticTagName":"I_Door14Diagnostic","doorValue":false,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"15","doorName":"Unwinder Door 15","doorTagName":"SFI_Door15","diagnosticTagName":"I_Door15Diagnostic","doorValue":false,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"16","doorName":"Unwinder Door 16","doorTagName":"SFI_Door16","diagnosticTagName":"I_Door16Diagnostic","doorValue":false,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"17","doorName":"Unwinder Door 17","doorTagName":"SFI_Door17","diagnosticTagName":"I_Door17Diagnostic","doorValue":false,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"18","doorName":"Unwinder Door 18","doorTagName":"SFI_Door18","diagnosticTagName":"I_Door18Diagnostic","doorValue":false,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"19","doorName":"Unwinder Door 19","doorTagName":"SFI_Door19","diagnosticTagName":"I_Door19Diagnostic","doorValue":true,"diagnosticValue":false,"status":"OK"},{"doorNo":"20","doorName":"Unwinder Door 20","doorTagName":"SFI_Door20","diagnosticTagName":"I_Door20Diagnostic","doorValue":true,"diagnosticValue":false,"status":"OK"},{"doorNo":"21","doorName":"Machine Door 21","doorTagName":"SFI_Door21","diagnosticTagName":"I_Door21Diagnostic","doorValue":true,"diagnosticValue":false,"status":"OK"},{"doorNo":"22","doorName":"Door 22","doorTagName":"SFI_Door22","diagnosticTagName":"I_Door22Diagnostic","doorValue":true,"diagnosticValue":false,"status":"OK"},{"doorNo":"23","doorName":"Door 23","doorTagName":"SFI_Door23","diagnosticTagName":"I_Door23Diagnostic","doorValue":true,"diagnosticValue":false,"status":"OK"},{"doorNo":"24","doorName":"Door 24","doorTagName":"SFI_Door24","diagnosticTagName":"I_Door24Diagnostic","doorValue":true,"diagnosticValue":false,"status":"OK"},{"doorNo":"25","doorName":"Door 25","doorTagName":"SFI_Door25","diagnosticTagName":"I_Door25Diagnostic","doorValue":true,"diagnosticValue":false,"status":"OK"},{"doorNo":"26","doorName":"Door 26","doorTagName":"SFI_Door26","diagnosticTagName":"I_Door26Diagnostic","doorValue":true,"diagnosticValue":false,"status":"OK"},{"doorNo":"27","doorName":"Door 27","doorTagName":"SFI_Door27","diagnosticTagName":"I_Door27Diagnostic","doorValue":true,"diagnosticValue":false,"status":"OK"},{"doorNo":"28","doorName":"Door 28","doorTagName":"SFI_Door28","diagnosticTagName":"I_Door28Diagnostic","doorValue":true,"diagnosticValue":false,"status":"OK"},{"doorNo":"29","doorName":"Door 29","doorTagName":"SFI_Door29","diagnosticTagName":"I_Door29Diagnostic","doorValue":true,"diagnosticValue":false,"status":"OK"},{"doorNo":"30","doorName":"Door 30","doorTagName":"SFI_Door30","diagnosticTagName":"I_Door30Diagnostic","doorValue":true,"diagnosticValue":false,"status":"OK"},{"doorNo":"31","doorName":"Door 31","doorTagName":"SFI_Door31","diagnosticTagName":"I_Door31Diagnostic","doorValue":true,"diagnosticValue":false,"status":"OK"},{"doorNo":"32","doorName":"Door 32","doorTagName":"SFI_Door32","diagnosticTagName":"I_Door32Diagnostic","doorValue":true,"diagnosticValue":false,"status":"OK"},{"doorNo":"33","doorName":"Door 33","doorTagName":"SFI_Door33","diagnosticTagName":"I_Door33Diagnostic","doorValue":true,"diagnosticValue":false,"status":"OK"},{"doorNo":"34","doorName":"Unwinder Door 34","doorTagName":"SFI_Door34","diagnosticTagName":"I_Door34Diagnostic","doorValue":true,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"35","doorName":"Unwinder Door 35","doorTagName":"SFI_Door35","diagnosticTagName":"I_Door35Diagnostic","doorValue":true,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"36","doorName":"Unwinder Door 36","doorTagName":"SFI_Door36","diagnosticTagName":"I_Door36Diagnostic","doorValue":true,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"37","doorName":"Unwinder Door 37","doorTagName":"SFI_Door37","diagnosticTagName":"I_Door37Diagnostic","doorValue":false,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"38","doorName":"Unwinder Door 38","doorTagName":"SFI_Door38","diagnosticTagName":"I_Door38Diagnostic","doorValue":true,"diagnosticValue":true,"status":"DIAGNOSTIC"},{"doorNo":"39","doorName":"Unwinder Door 39","doorTagName":"SFI_Door39","diagnosticTagName":"I_Door39Diagnostic","doorValue":false,"diagnosticValue":true,"status":"DIAGNOSTIC"}],"overallStatus":"DIAGNOSTIC","openDoorCount":18,"diagnosticCount":15,"SFI_Door1":true,"I_Door1Diagnostic":true,"SFI_Door2":true,"I_Door2Diagnostic":true,"SFI_Door3":false,"I_Door3Diagnostic":true,"SFI_Door4":false,"I_Door4Diagnostic":true,"SFI_Door5":false,"I_Door5Diagnostic":true,"SFI_Door6":false,"I_Door6Diagnostic":true,"SFI_Door7":false,"I_Door7Diagnostic":true,"SFI_Door8":false,"I_Door8Diagnostic":true,"SFI_Door9":false,"I_Door9Diagnostic":true,"SFI_Door10":false,"I_Door10Diagnostic":true,"SFI_Door11":false,"I_Door11Diagnostic":true,"SFI_Door12":false,"I_Door12Diagnostic":true,"SFI_Door13":false,"I_Door13Diagnostic":true,"SFI_Door14":false,"I_Door14Diagnostic":true,"SFI_Door15":false,"I_Door15Diagnostic":true,"SFI_Door16":false,"I_Door16Diagnostic":true,"SFI_Door17":false,"I_Door17Diagnostic":true,"SFI_Door18":false,"I_Door18Diagnostic":true,"SFI_Door19":true,"I_Door19Diagnostic":false,"SFI_Door20":true,"I_Door20Diagnostic":false,"SFI_Door21":true,"I_Door21Diagnostic":false,"SFI_Door22":true,"I_Door22Diagnostic":false,"SFI_Door23":true,"I_Door23Diagnostic":false,"SFI_Door24":true,"I_Door24Diagnostic":false,"SFI_Door25":true,"I_Door25Diagnostic":false,"SFI_Door26":true,"I_Door26Diagnostic":false,"SFI_Door27":true,"I_Door27Diagnostic":false,"SFI_Door28":true,"I_Door28Diagnostic":false,"SFI_Door29":true,"I_Door29Diagnostic":false,"SFI_Door30":true,"I_Door30Diagnostic":false,"SFI_Door31":true,"I_Door31Diagnostic":false,"SFI_Door32":true,"I_Door32Diagnostic":false,"SFI_Door33":true,"I_Door33Diagnostic":false,"SFI_Door34":true,"I_Door34Diagnostic":true,"SFI_Door35":true,"I_Door35Diagnostic":true,"SFI_Door36":true,"I_Door36Diagnostic":true,"SFI_Door37":false,"I_Door37Diagnostic":true,"SFI_Door38":true,"I_Door38Diagnostic":true,"SFI_Door39":false,"I_Door39Diagnostic":true}}
+
+  {
+    "I_Door10Diagnostic": true,
+    "I_Door11Diagnostic": true,
+    "I_Door12Diagnostic": true,
+    "I_Door13Diagnostic": true,
+    "I_Door14Diagnostic": true,
+    "I_Door15Diagnostic": true,
+    "I_Door16Diagnostic": true,
+    "I_Door17Diagnostic": true,
+    "I_Door18Diagnostic": true,
+    "I_Door19Diagnostic": false,
+    "I_Door1Diagnostic": true,
+    "I_Door20Diagnostic": false,
+    "I_Door21Diagnostic": false,
+    "I_Door22Diagnostic": false,
+    "I_Door23Diagnostic": false,
+    "I_Door24Diagnostic": false,
+    "I_Door25Diagnostic": false,
+    "I_Door26Diagnostic": false,
+    "I_Door27Diagnostic": false,
+    "I_Door28Diagnostic": false,
+    "I_Door29Diagnostic": false,
+    "I_Door2Diagnostic": true,
+    "I_Door30Diagnostic": false,
+    "I_Door31Diagnostic": false,
+    "I_Door32Diagnostic": false,
+    "I_Door33Diagnostic": false,
+    "I_Door34Diagnostic": true,
+    "I_Door35Diagnostic": true,
+    "I_Door36Diagnostic": true,
+    "I_Door37Diagnostic": true,
+    "I_Door38Diagnostic": true,
+    "I_Door39Diagnostic": true,
+    "I_Door3Diagnostic": true,
+    "I_Door4Diagnostic": true,
+    "I_Door5Diagnostic": true,
+    "I_Door6Diagnostic": true,
+    "I_Door7Diagnostic": true,
+    "I_Door8Diagnostic": true,
+    "I_Door9Diagnostic": true,
+    "SFI_Door1": true,
+    "SFI_Door10": false,
+    "SFI_Door11": false,
+    "SFI_Door12": false,
+    "SFI_Door13": false,
+    "SFI_Door14": false,
+    "SFI_Door15": false,
+    "SFI_Door16": false,
+    "SFI_Door17": false,
+    "SFI_Door18": false,
+    "SFI_Door19": true,
+    "SFI_Door2": true,
+    "SFI_Door20": true,
+    "SFI_Door21": true,
+    "SFI_Door22": true,
+    "SFI_Door23": true,
+    "SFI_Door24": true,
+    "SFI_Door25": true,
+    "SFI_Door26": true,
+    "SFI_Door27": true,
+    "SFI_Door28": true,
+    "SFI_Door29": true,
+    "SFI_Door3": false,
+    "SFI_Door30": true,
+    "SFI_Door31": true,
+    "SFI_Door32": true,
+    "SFI_Door33": true,
+    "SFI_Door34": true,
+    "SFI_Door35": true,
+    "SFI_Door36": true,
+    "SFI_Door37": false,
+    "SFI_Door38": true,
+    "SFI_Door39": false,
+    "SFI_Door4": false,
+    "SFI_Door5": false,
+    "SFI_Door6": false,
+    "SFI_Door7": false,
+    "SFI_Door8": false,
+    "SFI_Door9": false
+  }

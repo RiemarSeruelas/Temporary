@@ -2,8 +2,9 @@
 const express = require("express");
 const cors = require("cors");
 const mqtt = require("mqtt");
+const path = require("path");
 const { Pool } = require("pg");
-require("dotenv").config();
+require("dotenv").config({ path: path.join(__dirname, ".env"), override: true });
 
 const app = express();
 
@@ -17,7 +18,7 @@ const MQTT_USERNAME = process.env.MQTT_USERNAME;
 const MQTT_PASSWORD = process.env.MQTT_PASSWORD;
 const MQTT_TOPIC = process.env.MQTT_TOPIC || "sensor/data";
 
-const FACE_API_BASE_URL = process.env.FACE_API_BASE_URL || "http://10.156.119.146:5005";
+const FACE_API_BASE_URL = (process.env.FACE_API_BASE_URL || "http://10.156.119.146:5005").replace(/\/$/, "");
 const APP_NAMESPACE = process.env.APP_NAMESPACE || "riems_operator_attendance";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin2026";
 
@@ -223,22 +224,36 @@ async function faceApiPost(path, body) {
   return data;
 }
 
- function firstFaceCandidate(apiResponse) {
-  const rows = apiResponse?.results?.[0];
+function firstFaceCandidate(apiResponse) {
+  const firstGroup = apiResponse?.results?.[0];
+  if (!Array.isArray(firstGroup) || firstGroup.length === 0) return null;
 
-  if (!Array.isArray(rows) || rows.length === 0) {
-    return null;
-  }
-
-  const validRows = rows
-    .filter((row) => {
-      const distance = Number(row.distance);
-      const threshold = Number(row.threshold);
-      return Number.isFinite(distance) && Number.isFinite(threshold) && distance <= threshold;
+  const validCandidates = firstGroup
+    .filter((candidate) => candidate && typeof candidate === "object")
+    .map((candidate) => ({
+      ...candidate,
+      distanceNumber: Number(candidate.distance),
+      thresholdNumber: Number(candidate.threshold),
+    }))
+    .filter((candidate) => {
+      if (!Number.isFinite(candidate.distanceNumber)) return false;
+      if (!Number.isFinite(candidate.thresholdNumber)) return true;
+      return candidate.distanceNumber <= candidate.thresholdNumber;
     })
-    .sort((a, b) => Number(a.distance) - Number(b.distance));
+    .sort((a, b) => a.distanceNumber - b.distanceNumber);
 
-  return validRows[0] || null;
+  const candidate = validCandidates[0];
+  if (!candidate) return null;
+
+  return {
+    raw: candidate,
+    face_api_id: candidate.id,
+    face_api_object_id: candidate._id,
+    face_img_name: candidate.img_name,
+    distance: candidate.distance,
+    threshold: candidate.threshold,
+    confidence: candidate.confidence,
+  };
 }
 
 function normalizeImageInput(image) {
@@ -289,21 +304,30 @@ async function findRegisteredPersonByFaceId(faceApiId, machine) {
 }
 
 async function ensureTables() {
-  await pgPool.query(`CREATE SCHEMA IF NOT EXISTS "${POSTGRES_SCHEMA.replace(/[^a-zA-Z0-9_]/g, "")}"`);
+  const safeSchema = POSTGRES_SCHEMA.replace(/[^a-zA-Z0-9_]/g, "");
+  await pgPool.query(`CREATE SCHEMA IF NOT EXISTS "${safeSchema}"`);
 
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS ${peopleTable} (
       id SERIAL PRIMARY KEY,
       person_name TEXT NOT NULL,
-      department TEXT NOT NULL,
-      machine TEXT NOT NULL,
-      face_api_id INTEGER NOT NULL,
+      department TEXT,
+      machine TEXT,
+      face_api_id INTEGER,
       face_img_name TEXT,
       app_namespace TEXT NOT NULL DEFAULT '${APP_NAMESPACE.replace(/'/g, "''")}',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE (app_namespace, machine, face_api_id)
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Safe migrations for older tables created during testing.
+  await pgPool.query(`ALTER TABLE ${peopleTable} ADD COLUMN IF NOT EXISTS department TEXT`);
+  await pgPool.query(`ALTER TABLE ${peopleTable} ADD COLUMN IF NOT EXISTS machine TEXT`);
+  await pgPool.query(`ALTER TABLE ${peopleTable} ADD COLUMN IF NOT EXISTS face_api_id INTEGER`);
+  await pgPool.query(`ALTER TABLE ${peopleTable} ADD COLUMN IF NOT EXISTS face_img_name TEXT`);
+  await pgPool.query(`ALTER TABLE ${peopleTable} ADD COLUMN IF NOT EXISTS app_namespace TEXT DEFAULT '${APP_NAMESPACE.replace(/'/g, "''")}'`);
+  await pgPool.query(`ALTER TABLE ${peopleTable} ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
+  await pgPool.query(`UPDATE ${peopleTable} SET app_namespace = $1 WHERE app_namespace IS NULL`, [APP_NAMESPACE]);
 
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS ${attendanceTable} (
@@ -317,6 +341,58 @@ async function ensureTables() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  await pgPool.query(`ALTER TABLE ${attendanceTable} ADD COLUMN IF NOT EXISTS person_id INTEGER`);
+  await pgPool.query(`ALTER TABLE ${attendanceTable} ADD COLUMN IF NOT EXISTS person_name TEXT`);
+  await pgPool.query(`ALTER TABLE ${attendanceTable} ADD COLUMN IF NOT EXISTS department TEXT`);
+  await pgPool.query(`ALTER TABLE ${attendanceTable} ADD COLUMN IF NOT EXISTS machine TEXT`);
+  await pgPool.query(`ALTER TABLE ${attendanceTable} ADD COLUMN IF NOT EXISTS face_api_id INTEGER`);
+  await pgPool.query(`ALTER TABLE ${attendanceTable} ADD COLUMN IF NOT EXISTS face_img_name TEXT`);
+  await pgPool.query(`ALTER TABLE ${attendanceTable} ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
+}
+
+async function upsertRegisteredPerson({ person_name, department, machine, face_api_id, face_img_name }) {
+  const existing = await pgPool.query(
+    `
+      SELECT id
+      FROM ${peopleTable}
+      WHERE app_namespace = $1
+        AND machine = $2
+        AND face_api_id = $3
+      ORDER BY id DESC
+      LIMIT 1
+    `,
+    [APP_NAMESPACE, machine, face_api_id]
+  );
+
+  if (existing.rows[0]) {
+    const updated = await pgPool.query(
+      `
+        UPDATE ${peopleTable}
+        SET person_name = $1,
+            department = $2,
+            face_img_name = $3
+        WHERE id = $4
+        RETURNING id, person_name, department, machine, face_api_id, face_img_name, created_at
+      `,
+      [person_name, department, face_img_name, existing.rows[0].id]
+    );
+
+    return updated.rows[0];
+  }
+
+  const inserted = await pgPool.query(
+    `
+      INSERT INTO ${peopleTable} (
+        person_name, department, machine, face_api_id, face_img_name, app_namespace
+      )
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, person_name, department, machine, face_api_id, face_img_name, created_at
+    `,
+    [person_name, department, machine, face_api_id, face_img_name, APP_NAMESPACE]
+  );
+
+  return inserted.rows[0];
 }
 
 if (MQTT_BROKER) {
@@ -469,23 +545,15 @@ app.post("/api/face/register", async (req, res) => {
       });
     }
 
-    const saved = await pgPool.query(
-      `
-        INSERT INTO ${peopleTable} (
-          person_name, department, machine, face_api_id, face_img_name, app_namespace
-        )
-        VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (app_namespace, machine, face_api_id)
-        DO UPDATE SET
-          person_name = EXCLUDED.person_name,
-          department = EXCLUDED.department,
-          face_img_name = EXCLUDED.face_img_name
-        RETURNING id, person_name, department, machine, face_api_id, face_img_name, created_at
-      `,
-      [person_name, department, machine, candidate.face_api_id, candidate.face_img_name, APP_NAMESPACE]
-    );
+    const savedPerson = await upsertRegisteredPerson({
+      person_name,
+      department,
+      machine,
+      face_api_id: candidate.face_api_id,
+      face_img_name: candidate.face_img_name,
+    });
 
-    res.json({ ok: true, person: saved.rows[0], candidate, registerResponse });
+    res.json({ ok: true, person: savedPerson, candidate, registerResponse });
   } catch (err) {
     console.error("Face register failed:", err);
     res.status(500).json({ error: err.message });

@@ -14,33 +14,9 @@ PS C:\Users\ASUS\Downloads\Temporary2> npm.cmd start
 [1] 'vite' is not recognized as an internal or external command,
 [1] operable program or batch file.
 [1] npm run start:frontend exited with code 1
-[0] ◇ injected env (0) from .env // tip: ⌘ enable debugging { debug: true }
+[0] ◇ injected env (13) from .env // tip: ⌘ override existing { override: true }
 [0] ⚠ MQTT_BROKER is empty. Dashboard will stay in WAITING mode until configured.
-[0] ❌ Failed to initialize PostgreSQL tables: Error: SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a string
-[0]     at C:\Users\ASUS\Downloads\Temporary2\backend\node_modules\pg-pool\index.js:45:11
-[0]     at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
-[0]     at async ensureTables (C:\Users\ASUS\Downloads\Temporary2\backend\server.js:256:3)
-[0] npm run start:backend exited with code 1
-PS C:\Users\ASUS\Downloads\Temporary2> npm.cmd start
-
-> backend@1.0.0 start
-> concurrently "npm run start:backend" "npm run start:frontend"
-
-[1] 
-[1] > backend@1.0.0 start:frontend
-[1] > vite
-[1] 
-[0] 
-[0] > backend@1.0.0 start:backend
-[0] > cd backend && node server.js
-[0] 
-[1] 'vite' is not recognized as an internal or external command,
-[1] operable program or batch file.
-[1] npm run start:frontend exited with code 1
-[0] ◇ injected env (0) from .env // tip: ⌘ enable debugging { debug: true }
-[0] ⚠ MQTT_BROKER is empty. Dashboard will stay in WAITING mode until configured.
-[0] ❌ Failed to initialize PostgreSQL tables: Error: SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a string
-[0]     at C:\Users\ASUS\Downloads\Temporary2\backend\node_modules\pg-pool\index.js:45:11
-[0]     at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
-[0]     at async ensureTables (C:\Users\ASUS\Downloads\Temporary2\backend\server.js:256:3)
-[0] npm run start:backend exited with code 1
+[0] ✅ Backend running on http://localhost:5000
+[0] ✅ Dashboard endpoint: http://localhost:5000/data
+[0] ✅ Face API base URL: http://172.27.1.92:5005
+[0] ✅ PostgreSQL tables: "app"."face_people", "app"."face_attendance_logs"

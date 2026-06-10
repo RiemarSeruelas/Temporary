@@ -3128,3 +3128,60 @@ button:hover {
   font-weight: 800;
   margin: 0 0 10px;
 }
+
+/* =========================================================
+   26 - TOPBAR CONFIRMATION CLEANUP
+========================================================= */
+.desktop-topbar {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.topbar-left {
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
+.topbar-right {
+  gap: 10px;
+}
+
+.top-machine-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.top-confirm-btn {
+  height: 36px;
+  min-height: 36px;
+  padding: 0 18px;
+  flex-shrink: 0;
+  box-shadow: 0 10px 22px rgba(15, 140, 255, 0.26);
+}
+
+.theme-toggle-btn {
+  min-width: 92px;
+}
+
+.topbar .top-view-select-wrap {
+  flex-shrink: 0;
+}
+
+@media (max-width: 980px) {
+  .desktop-topbar {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .topbar-left,
+  .topbar-right {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .topbar-right {
+    justify-content: flex-end;
+  }
+}

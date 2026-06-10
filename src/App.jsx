@@ -425,64 +425,69 @@ const machineRows = useMemo(() => {
           10 - TOP HEADER
       ========================================================= */}
 
-     <header className="topbar">
-  <div className="desktop-topbar">
-    <div className="topbar-left">
-      <div className="brand-card">
-        <div className="brand-icon">⚙️</div>
-        <div>
-          <div className="brand-title">MACHINE DASHBOARD</div>
-          <div className="brand-subtitle">HighByte MQTT Monitoring System</div>
+      <header className="topbar">
+        <div className="desktop-topbar">
+          <div className="topbar-left">
+            <div className="brand-card">
+              <div className="brand-icon">⚙️</div>
+              <div>
+                <div className="brand-title">MACHINE DASHBOARD</div>
+                <div className="brand-subtitle">HighByte MQTT Monitoring System</div>
+              </div>
+            </div>
+
+            <div className="top-machine-tabs">
+              {Object.values(MACHINE_CONFIGS).map((machine) => (
+                <button
+                  key={machine.id}
+                  className={`top-nav-btn ${
+                    activeMachineId === machine.id ? "active" : ""
+                  }`}
+                  onClick={() => setActiveMachineId(machine.id)}
+                >
+                  {machine.name}
+                </button>
+              ))}
+            </div>
+
+            <label className="top-view-select-wrap" title="Switch machine view">
+              <span>View</span>
+              <select
+                className="top-view-select"
+                value={viewMode}
+                onChange={(event) => {
+                  setViewMode(event.target.value);
+                  resetView();
+                }}
+              >
+                <option value="2d">2D</option>
+                <option value="3d">3D</option>
+              </select>
+            </label>
+
+            <button
+              className="face-confirm-btn top-confirm-btn"
+              onClick={() => setFaceModalOpen(true)}
+            >
+              Confirm Check
+            </button>
+          </div>
+
+          <div className="topbar-right">
+            <div className={`top-state-inline ${getStatusClass(status)}`}>
+              <div className="top-state-dot" />
+              <span>{status}</span>
+            </div>
+
+            <button
+              className="top-nav-btn theme-toggle-btn"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              {theme === "dark" ? "☀ Light" : "🌙 Dark"}
+            </button>
+          </div>
         </div>
-      </div>
-
-      <div className="topbar-center">
-        <div className={`top-state-inline ${getStatusClass(status)}`}>
-          <div className="top-state-dot" />
-          <span>{status}</span>
-        </div>
-
-        <label className="top-view-select-wrap" title="Switch machine view">
-          <span>View</span>
-          <select
-            className="top-view-select"
-            value={viewMode}
-            onChange={(event) => {
-              setViewMode(event.target.value);
-              resetView();
-            }}
-          >
-            <option value="2d">2D</option>
-            <option value="3d">3D</option>
-          </select>
-        </label>
-
-        <button
-          className="top-nav-btn"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-        >
-          {theme === "dark" ? "☀ Light" : "🌙 Dark"}
-        </button>
-      </div>
-    </div>
-
-    <div className="topbar-right">
-      {Object.values(MACHINE_CONFIGS).map((machine) => (
-        <button
-          key={machine.id}
-          className={`top-nav-btn ${
-            activeMachineId === machine.id ? "active" : ""
-          }`}
-          onClick={() => setActiveMachineId(machine.id)}
-        >
-          {machine.name}
-        </button>
-      ))}
-    </div>
-  </div>
-</header>
-
-      <FaceAttendanceBar onOpen={() => setFaceModalOpen(true)} />
+      </header>
 
       {/* =========================================================
           11 - SUMMARY STRIP
@@ -1030,18 +1035,6 @@ function MachineModel({ url, scale, position, rotation }) {
 
 useGLTF.preload("/models/mespack.glb");
 
-function FaceAttendanceBar({ onOpen }) {
-  return (
-    <section className="face-confirm-strip">
-      <div className="face-confirm-copy">
-        <strong>Machine Check Confirmation</strong>
-        <span>Confirm machine checks with face recognition proof</span>
-      </div>
-      <button className="face-confirm-btn" onClick={onOpen}>Confirm Check</button>
-    </section>
-  );
-}
-
 function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
   const [mode, setMode] = useState("menu");
   const [status, setStatus] = useState("");
@@ -1350,20 +1343,22 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
               )}
               {mode === "confirm" && (
                 <div className="face-helper-text">
-                  Scan only. Name/department will be pulled from PostgreSQL based on the recognized Face API ID.
+                  Face scan only. Operator details will be pulled from PostgreSQL after recognition.
                 </div>
               )}
-              <label>
-                Machine
-                <select
-                  value={form.machine}
-                  onChange={(e) => setForm((prev) => ({ ...prev, machine: e.target.value }))}
-                >
-                  {machineOptions.map((machine) => (
-                    <option key={machine.id} value={machine.id}>{machine.name}</option>
-                  ))}
-                </select>
-              </label>
+              {mode === "register" && (
+                <label>
+                  Machine
+                  <select
+                    value={form.machine}
+                    onChange={(e) => setForm((prev) => ({ ...prev, machine: e.target.value }))}
+                  >
+                    {machineOptions.map((machine) => (
+                      <option key={machine.id} value={machine.id}>{machine.name}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
             </div>
 
             <div className="face-camera-card">

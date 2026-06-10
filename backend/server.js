@@ -223,22 +223,22 @@ async function faceApiPost(path, body) {
   return data;
 }
 
-function firstFaceCandidate(apiResponse) {
-  const firstGroup = apiResponse?.results?.[0];
-  if (!Array.isArray(firstGroup) || firstGroup.length === 0) return null;
+ function firstFaceCandidate(apiResponse) {
+  const rows = apiResponse?.results?.[0];
 
-  const candidate = firstGroup[0];
-  if (!candidate || typeof candidate !== "object") return null;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return null;
+  }
 
-  return {
-    raw: candidate,
-    face_api_id: candidate.id,
-    face_api_object_id: candidate._id,
-    face_img_name: candidate.img_name,
-    distance: candidate.distance,
-    threshold: candidate.threshold,
-    confidence: candidate.confidence,
-  };
+  const validRows = rows
+    .filter((row) => {
+      const distance = Number(row.distance);
+      const threshold = Number(row.threshold);
+      return Number.isFinite(distance) && Number.isFinite(threshold) && distance <= threshold;
+    })
+    .sort((a, b) => Number(a.distance) - Number(b.distance));
+
+  return validRows[0] || null;
 }
 
 function normalizeImageInput(image) {

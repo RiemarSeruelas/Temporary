@@ -1,60 +1,55 @@
-{
-    "results": [
-        [
-            {
-                "_id": "6a28c8cc64c114337bf5a01c",
-                "aligned": true,
-                "confidence": 100.0,
-                "detector_backend": "yunet",
-                "distance": 0.0,
-                "distance_metric": "cosine",
-                "id": 9,
-                "img_name": "f3ed3c72-29ce-4592-b477-2934c6c24492",
-                "l2_normalized": true,
-                "model_name": "SFace",
-                "search_method": "exact",
-                "target_h": 424,
-                "target_w": 340,
-                "target_x": 480,
-                "target_y": 200,
-                "threshold": 0.593
-            },
-            {
-                "_id": "6a27c19d64c114337bf5a001",
-                "aligned": true,
-                "confidence": 72.25,
-                "detector_backend": "yunet",
-                "distance": 0.39011651009428827,
-                "distance_metric": "cosine",
-                "id": 8,
-                "img_name": "0c9eb42d-4621-4325-99ed-ed34d570f944",
-                "l2_normalized": true,
-                "model_name": "SFace",
-                "search_method": "exact",
-                "target_h": 424,
-                "target_w": 340,
-                "target_x": 480,
-                "target_y": 200,
-                "threshold": 0.593
-            },
-            {
-                "_id": "6a262eab64c114337bf59fdb",
-                "aligned": true,
-                "confidence": 70.64,
-                "detector_backend": "yunet",
-                "distance": 0.4027720103628165,
-                "distance_metric": "cosine",
-                "id": 7,
-                "img_name": "2ac3d632-c9fb-45c1-83ab-1714801b47d2",
-                "l2_normalized": true,
-                "model_name": "SFace",
-                "search_method": "exact",
-                "target_h": 424,
-                "target_w": 340,
-                "target_x": 480,
-                "target_y": 200,
-                "threshold": 0.593
-            }
-        ]
-    ]
-}
+App.jsx:1141 
+ POST http://localhost:5178/api/face/login/scan 500 (Internal Server Error)
+postJson	@	App.jsx:1141
+handleLoginScan	@	App.jsx:1192
+App.jsx:1141 
+ POST http://localhost:5178/api/face/register 500 (Internal Server Error)
+postJson	@	App.jsx:1141
+handleRegister	@	App.jsx:1173
+
+PS C:\Users\ASUS\Downloads\Temporary2> npm.cmd start
+
+> machine-dashboard-face-integrated@0.0.0 start
+> concurrently "npm run start:backend" "npm run start:frontend"
+
+[0] 
+[0] > machine-dashboard-face-integrated@0.0.0 start:backend
+[0] > cd backend && node server.js
+[0] 
+[1] 
+[1] > machine-dashboard-face-integrated@0.0.0 start:frontend
+[1] > vite
+[1] 
+[1] 
+[1]   VITE v8.0.16  ready in 657 ms
+[1] 
+[1]   ➜  Local:   http://localhost:5178/
+[1]   ➜  Network: http://10.156.116.17:5178/
+[1] 10:32:32 AM [vite] http proxy error: /api/data
+[1] Error: connect ECONNREFUSED 127.0.0.1:5000
+[1]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[1] 10:32:32 AM [vite] http proxy error: /api/data
+[1] Error: connect ECONNREFUSED 127.0.0.1:5000
+[1]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[0] ◇ injected env (13) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+[0] ⚠ MQTT_BROKER is empty. Dashboard will stay in WAITING mode until configured.
+[0] ✅ Backend running on http://localhost:5000
+[0] ✅ Dashboard endpoint: http://localhost:5000/data
+[0] ✅ Face API base URL: http://172.27.1.92:5005
+[0] ✅ PostgreSQL tables: "app"."face_people", "app"."face_attendance_logs"
+[0] Face login scan failed: [TypeError: fetch failed] {
+[0]   [cause]: ConnectTimeoutError: Connect Timeout Error (attempted address: 172.27.1.92:5005, timeout: 10000ms)
+[0]       at onConnectTimeout (node:internal/deps/undici/undici:1981:23)
+[0]       at Immediate._onImmediate (node:internal/deps/undici/undici:1947:35)
+[0]       at process.processImmediate (node:internal/timers:504:21) {
+[0]     code: 'UND_ERR_CONNECT_TIMEOUT'
+[0]   }
+[0] }
+[0] Face register failed: [TypeError: fetch failed] {
+[0]   [cause]: ConnectTimeoutError: Connect Timeout Error (attempted address: 172.27.1.92:5005, timeout: 10000ms)
+[0]       at onConnectTimeout (node:internal/deps/undici/undici:1981:23)
+[0]       at Immediate._onImmediate (node:internal/deps/undici/undici:1947:35)
+[0]       at process.processImmediate (node:internal/timers:504:21) {
+[0]     code: 'UND_ERR_CONNECT_TIMEOUT'
+[0]   }
+[0] }

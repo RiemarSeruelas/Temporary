@@ -1067,6 +1067,7 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const confirmRetryRef = useRef(null);
 
   const machineOptions = machines?.length ? machines : [{ id: "mespack", name: "Mespack" }];
   const selectedMachineName = machineOptions.find((m) => m.id === form.machine)?.name || form.machine;
@@ -1081,9 +1082,28 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
     return nameOk && deptOk && machineOk && dateOk;
   });
 
+  const filteredPeople = adminPeople.filter((row) => {
+    const nameOk = !filters.name || String(row.person_name || "").toLowerCase().includes(filters.name.toLowerCase());
+    const deptOk = !filters.department || String(row.department || "").toLowerCase().includes(filters.department.toLowerCase());
+    const machineText = `${row.machine || ""} ${row.machine_name || ""}`.toLowerCase();
+    const machineOk = !filters.machine || machineText.includes(filters.machine.toLowerCase());
+    return nameOk && deptOk && machineOk;
+  });
+
   useEffect(() => {
     return () => stopCamera();
   }, []);
+
+  useEffect(() => {
+    if (mode !== "confirm" || !stream) return undefined;
+
+    window.clearTimeout(confirmRetryRef.current);
+    confirmRetryRef.current = window.setTimeout(() => {
+      handleConfirmCheck({ silent: true });
+    }, 1200);
+
+    return () => window.clearTimeout(confirmRetryRef.current);
+  }, [mode, stream]);
 
   async function startCamera() {
     setError("");
@@ -1106,6 +1126,7 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
   }
 
   function stopCamera() {
+    window.clearTimeout(confirmRetryRef.current);
     if (stream) stream.getTracks().forEach((track) => track.stop());
     setStream(null);
   }
@@ -1226,10 +1247,14 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
     }
   }
 
-  async function handleConfirmCheck() {
+  async function handleConfirmCheck(options = {}) {
+    const { silent = false } = options;
+    if (loading) return;
     setLoading(true);
-    setError("");
-    setStatus("Scanning...");
+    if (!silent) {
+      setError("");
+      setStatus("Scanning...");
+    }
     try {
       const image = captureImage();
       const data = await postJson("/api/machine-check/confirm", {
@@ -1241,8 +1266,15 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
       onClose();
       onConfirmed?.(`Confirmed: ${data.log?.person_name || "Machine check saved"}`);
     } catch (err) {
-      setError(err.message);
-      setStatus("");
+      if (silent) {
+        window.clearTimeout(confirmRetryRef.current);
+        confirmRetryRef.current = window.setTimeout(() => {
+          handleConfirmCheck({ silent: true });
+        }, 1800);
+      } else {
+        setError(err.message);
+        setStatus("");
+      }
     } finally {
       setLoading(false);
     }
@@ -1271,16 +1303,16 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
 
   return (
     <div className="face-modal-backdrop" onClick={onClose}>
-      <div className="face-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="face-modal-header">
-          <div>
-            <div className="face-modal-kicker">Machine Check</div>
-            <div className="face-modal-title">
-              {mode === "menu" && "Confirmation"}
-              {mode === "confirm" && "Confirmation"}
-              {mode === "admin" && "Admin"}
+      <div className={`face-modal ${mode === "confirm" ? "face-modal-confirm-only" : ""} ${mode === "admin" && adminAuthed ? "face-modal-admin" : ""} ${mode === "admin" && !adminAuthed ? "face-modal-admin-auth" : ""}`} onClick={(e) => e.stopPropagation()}>
+        <div className={`face-modal-header ${mode === "confirm" ? "confirm-only-header" : ""}`}>
+          {mode !== "confirm" && (
+            <div>
+              <div className="face-modal-kicker">Machine Check</div>
+              <div className="face-modal-title">
+                {mode === "admin" && "Admin"}
+              </div>
             </div>
-          </div>
+          )}
           <button className="face-modal-close" onClick={onClose}>×</button>
         </div>
 
@@ -1288,34 +1320,40 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
           <div className="face-action-grid two">
             <button className="face-action-card" onClick={() => chooseMode("confirm")}>
               <strong>Confirmation</strong>
-              <span>Scan face and save the machine check.</span>
+              <span>Open the live facial confirmation camera.</span>
             </button>
             <button className="face-action-card" onClick={() => chooseMode("admin")}>
               <strong>Admin</strong>
-              <span>View logs, register faces, and deactivate operators.</span>
+              <span>Manage confirmations and registered operators.</span>
             </button>
           </div>
         )}
 
         {mode === "confirm" && (
-          <>
-            <div className="face-camera-card clean-confirm-camera">
+          <div className="face-confirm-only-shell">
+            <div className="face-camera-card clean-confirm-camera camera-only-card">
               <video ref={videoRef} className="face-camera-video" playsInline muted />
               <canvas ref={canvasRef} style={{ display: "none" }} />
+              <div className="face-camera-live-chip">LIVE</div>
+              <div className="face-camera-corners">
+                <span />
+                <span />
+                <span />
+                <span />
+              </div>
+              <div className="face-camera-scanline" />
+              {loading && <div className="face-camera-overlay">Scanning face…</div>}
             </div>
-            <div className="face-modal-actions">
-              <button className="face-secondary-btn" onClick={resetToMenu}>Back</button>
-              {!stream && <button className="face-secondary-btn" onClick={startCamera}>Open Camera</button>}
-              <button className="face-primary-btn" onClick={handleConfirmCheck} disabled={loading || !stream}>
-                {loading ? "Confirming..." : "Confirm"}
-              </button>
-            </div>
-          </>
+          </div>
         )}
 
         {mode === "admin" && !adminAuthed && (
-          <>
-            <div className="face-form-grid single">
+          <div className="face-admin-auth-card">
+            <div className="face-admin-auth-copy">
+              <div className="face-admin-auth-title">Admin Access</div>
+              <div className="face-admin-auth-subtitle">Enter the administrator password to open logs and registration tools.</div>
+            </div>
+            <div className="face-form-grid single admin-auth-grid">
               <label>
                 Admin Password
                 <input
@@ -1333,7 +1371,7 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
                 {loading ? "Checking..." : "Enter Admin"}
               </button>
             </div>
-          </>
+          </div>
         )}
 
         {mode === "admin" && adminAuthed && (
@@ -1344,15 +1382,15 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
             </div>
 
             {adminTab === "logs" && (
-              <>
-                <div className="face-filter-grid">
+              <div className="face-admin-panel">
+                <div className="face-filter-grid face-filter-grid-logs">
                   <label>Date<input type="date" value={filters.date} onChange={(e) => setFilters((p) => ({ ...p, date: e.target.value }))} /></label>
                   <label>Name<input value={filters.name} onChange={(e) => setFilters((p) => ({ ...p, name: e.target.value }))} placeholder="Filter name" /></label>
                   <label>Machine<input value={filters.machine} onChange={(e) => setFilters((p) => ({ ...p, machine: e.target.value }))} placeholder="Filter machine" /></label>
                   <label>Department<input value={filters.department} onChange={(e) => setFilters((p) => ({ ...p, department: e.target.value }))} placeholder="Filter department" /></label>
                 </div>
 
-                <div className="face-admin-table-wrap tall">
+                <div className="face-admin-table-wrap polished-table-wrap logs-table-wrap">
                   <table className="face-admin-table">
                     <thead>
                       <tr>
@@ -1362,10 +1400,6 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
                         <th>Machine</th>
                         <th>Employee</th>
                         <th>Role</th>
-                        <th>Face ID</th>
-                        <th>Image ID</th>
-                        <th>Confidence</th>
-                        <th>Distance</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1377,93 +1411,91 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
                           <td>{row.machine_name || row.machine || "-"}</td>
                           <td>{row.employee_id || "-"}</td>
                           <td>{row.role || "-"}</td>
-                          <td>{row.face_api_id || "-"}</td>
-                          <td>{row.face_img_name || "-"}</td>
-                          <td>{row.face_confidence ?? "-"}</td>
-                          <td>{row.face_distance ?? "-"}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              </>
+              </div>
             )}
 
             {adminTab === "register" && (
-              <>
-                <div className="face-form-grid register-grid">
-                  <label>Operator Name<input value={form.person_name} onChange={(e) => setForm((p) => ({ ...p, person_name: e.target.value }))} placeholder="e.g. Justin" /></label>
-                  <label>Employee ID<input value={form.employee_id} onChange={(e) => setForm((p) => ({ ...p, employee_id: e.target.value }))} placeholder="Optional" /></label>
-                  <label>Department<input value={form.department} onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))} placeholder="e.g. Engineering" /></label>
-                  <label>Role<select value={form.role} onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}><option value="operator">Operator</option><option value="technician">Technician</option><option value="engineer">Engineer</option><option value="admin">Admin</option></select></label>
-                  <label>Machine<select value={form.machine} onChange={(e) => setForm((p) => ({ ...p, machine: e.target.value }))}>{machineOptions.map((machine) => <option key={machine.id} value={machine.id}>{machine.name}</option>)}</select></label>
-                </div>
-
-                <div className="face-camera-card register-camera">
-                  <video ref={videoRef} className="face-camera-video" playsInline muted />
-                  <canvas ref={canvasRef} style={{ display: "none" }} />
-                </div>
-
-                <div className="face-modal-actions">
-                  {!stream && <button className="face-secondary-btn" onClick={startCamera}>Open Camera</button>}
-                  <button className="face-primary-btn" onClick={handleRegister} disabled={loading || !stream}>
-                    {loading ? "Registering..." : "Register Face"}
-                  </button>
-                  <button className="face-secondary-btn" onClick={() => loadAdminData(adminPassword)} disabled={loading}>Refresh</button>
-                </div>
-
-                {lastRegister && (
-                  <div className="face-result-card">
-                    <strong>Registered</strong>
-                    <span>Name: {lastRegister.operator?.person_name ?? form.person_name}</span>
-                    <span>Face ID: {lastRegister.candidate?.face_api_id ?? "Check Face API response"}</span>
-                    <span>Image ID: {lastRegister.candidate?.face_img_name ?? "-"}</span>
+              <div className="face-register-layout">
+                <div className="face-register-pane">
+                  <div className="face-register-pane-title">Register New Face</div>
+                  <div className="face-form-grid register-grid">
+                    <label>Operator Name<input value={form.person_name} onChange={(e) => setForm((p) => ({ ...p, person_name: e.target.value }))} placeholder="e.g. Justin" /></label>
+                    <label>Employee ID<input value={form.employee_id} onChange={(e) => setForm((p) => ({ ...p, employee_id: e.target.value }))} placeholder="Optional" /></label>
+                    <label>Department<input value={form.department} onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))} placeholder="e.g. Engineering" /></label>
+                    <label>Role<select value={form.role} onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}><option value="operator">Operator</option><option value="technician">Technician</option><option value="engineer">Engineer</option><option value="admin">Admin</option></select></label>
+                    <label>Machine<select value={form.machine} onChange={(e) => setForm((p) => ({ ...p, machine: e.target.value }))}>{machineOptions.map((machine) => <option key={machine.id} value={machine.id}>{machine.name}</option>)}</select></label>
                   </div>
-                )}
 
-                <div className="face-admin-table-wrap tall">
-                  <div className="face-admin-title">Registered Faces</div>
-                  <table className="face-admin-table">
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Department</th>
-                        <th>Machine</th>
-                        <th>Employee</th>
-                        <th>Role</th>
-                        <th>Face ID</th>
-                        <th>Image ID</th>
-                        <th>Active</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {adminPeople.map((row) => (
-                        <tr key={row.id}>
-                          <td>{row.person_name}</td>
-                          <td>{row.department || "-"}</td>
-                          <td>{row.machine_name || row.machine || "-"}</td>
-                          <td>{row.employee_id || "-"}</td>
-                          <td>{row.role || "-"}</td>
-                          <td>{row.face_api_id || "-"}</td>
-                          <td>{row.face_img_name || "-"}</td>
-                          <td>{row.is_active ? "Yes" : "No"}</td>
-                          <td>
-                            <button className="face-table-action" onClick={() => handleUnregister(row)} disabled={loading || !row.is_active}>
-                              {row.is_active ? "Unregister" : "Inactive"}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <div className="face-camera-card register-camera">
+                    <video ref={videoRef} className="face-camera-video" playsInline muted />
+                    <canvas ref={canvasRef} style={{ display: "none" }} />
+                    <div className="face-camera-live-chip">LIVE</div>
+                  </div>
+
+                  <div className="face-modal-actions compact-actions">
+                    {!stream && <button className="face-secondary-btn" onClick={startCamera}>Open Camera</button>}
+                    <button className="face-primary-btn" onClick={handleRegister} disabled={loading || !stream}>
+                      {loading ? "Registering..." : "Register Face"}
+                    </button>
+                    <button className="face-secondary-btn" onClick={() => loadAdminData(adminPassword)} disabled={loading}>Refresh</button>
+                  </div>
+
+                  {lastRegister && (
+                    <div className="face-result-card register-result-card">
+                      <strong>Registered Successfully</strong>
+                      <span>Name: {lastRegister.operator?.person_name ?? form.person_name}</span>
+                      <span>Department: {lastRegister.operator?.department ?? form.department}</span>
+                      <span>Machine: {lastRegister.operator?.machine_name ?? selectedMachineName}</span>
+                    </div>
+                  )}
                 </div>
-              </>
+
+                <div className="face-register-list">
+                  <div className="face-admin-title">Registered Faces</div>
+                  <div className="face-admin-table-wrap polished-table-wrap register-table-wrap">
+                    <table className="face-admin-table">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Department</th>
+                          <th>Machine</th>
+                          <th>Employee</th>
+                          <th>Role</th>
+                          <th>Status</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredPeople.map((row) => (
+                          <tr key={row.id}>
+                            <td>{row.person_name}</td>
+                            <td>{row.department || "-"}</td>
+                            <td>{row.machine_name || row.machine || "-"}</td>
+                            <td>{row.employee_id || "-"}</td>
+                            <td>{row.role || "-"}</td>
+                            <td><span className={`face-status-pill ${row.is_active ? "active" : "inactive"}`}>{row.is_active ? "Registered" : "Inactive"}</span></td>
+                            <td>
+                              <button className="face-table-action" onClick={() => handleUnregister(row)} disabled={loading || !row.is_active}>
+                                {row.is_active ? "Unregister" : "Inactive"}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
             )}
           </>
         )}
 
-        {status && <div className="face-status success">{status}</div>}
+        {mode !== "confirm" && status && <div className="face-status success">{status}</div>}
         {error && <div className="face-status error">{error}</div>}
       </div>
     </div>

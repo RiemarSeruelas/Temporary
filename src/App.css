@@ -3359,3 +3359,431 @@ button:hover {
     min-height: 270px;
   }
 }
+
+/* =========================================================
+   27 - FINAL POLISH OVERRIDES
+========================================================= */
+.face-modal {
+  width: min(1160px, calc(100vw - 34px));
+  max-height: 92vh;
+  padding: 22px;
+  border-radius: 28px;
+  overflow: auto;
+  background:
+    radial-gradient(circle at top right, rgba(15, 140, 255, 0.09), transparent 28%),
+    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(247,250,255,0.98));
+}
+
+.app-shell[data-theme="dark"] .face-modal {
+  background:
+    radial-gradient(circle at top right, rgba(15, 140, 255, 0.14), transparent 28%),
+    linear-gradient(180deg, rgba(17,24,39,0.98), rgba(15,23,42,0.98));
+}
+
+.face-modal-confirm-only {
+  width: min(1120px, calc(100vw - 34px));
+  padding: 18px;
+}
+
+.confirm-only-header {
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.face-confirm-only-shell {
+  padding: 0;
+}
+
+.camera-only-card {
+  min-height: 620px;
+  height: min(72vh, 720px);
+  position: relative;
+  border-radius: 28px;
+  overflow: hidden;
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08), 0 18px 42px rgba(2, 6, 23, 0.34);
+}
+
+.face-camera-video {
+  background: #020617;
+}
+
+.face-camera-live-chip {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 2;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.14em;
+  color: #e0f2fe;
+  background: rgba(2, 132, 199, 0.36);
+  border: 1px solid rgba(125, 211, 252, 0.32);
+  backdrop-filter: blur(8px);
+}
+
+.face-camera-overlay {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 2;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 950;
+  color: white;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  backdrop-filter: blur(8px);
+}
+
+.face-camera-corners span {
+  position: absolute;
+  width: 46px;
+  height: 46px;
+  border-color: rgba(255,255,255,0.96);
+  border-style: solid;
+  z-index: 2;
+}
+
+.face-camera-corners span:nth-child(1) {
+  top: 36px;
+  left: 36px;
+  border-width: 4px 0 0 4px;
+  border-top-left-radius: 18px;
+}
+
+.face-camera-corners span:nth-child(2) {
+  top: 36px;
+  right: 36px;
+  border-width: 4px 4px 0 0;
+  border-top-right-radius: 18px;
+}
+
+.face-camera-corners span:nth-child(3) {
+  bottom: 36px;
+  left: 36px;
+  border-width: 0 0 4px 4px;
+  border-bottom-left-radius: 18px;
+}
+
+.face-camera-corners span:nth-child(4) {
+  bottom: 36px;
+  right: 36px;
+  border-width: 0 4px 4px 0;
+  border-bottom-right-radius: 18px;
+}
+
+.face-camera-scanline {
+  position: absolute;
+  left: 7%;
+  right: 7%;
+  top: 14%;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.9), transparent);
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.7);
+  animation: face-scanline 2.9s linear infinite;
+  z-index: 2;
+}
+
+@keyframes face-scanline {
+  0% { top: 14%; opacity: 0.35; }
+  50% { top: 82%; opacity: 0.95; }
+  100% { top: 14%; opacity: 0.35; }
+}
+
+.face-modal-admin,
+.face-modal-admin-auth {
+  width: min(1220px, calc(100vw - 34px));
+}
+
+.face-admin-auth-card,
+.face-admin-panel,
+.face-register-pane,
+.face-register-list {
+  border-radius: 24px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,255,0.96));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+}
+
+.app-shell[data-theme="dark"] .face-admin-auth-card,
+.app-shell[data-theme="dark"] .face-admin-panel,
+.app-shell[data-theme="dark"] .face-register-pane,
+.app-shell[data-theme="dark"] .face-register-list {
+  background: linear-gradient(180deg, rgba(30,41,59,0.98), rgba(15,23,42,0.96));
+}
+
+.face-admin-auth-card {
+  max-width: 760px;
+  margin: 10px auto 0;
+  padding: 26px;
+}
+
+.face-admin-auth-copy {
+  margin-bottom: 18px;
+}
+
+.face-admin-auth-title {
+  font-size: 28px;
+  font-weight: 950;
+  margin-bottom: 8px;
+}
+
+.face-admin-auth-subtitle {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.admin-auth-grid input {
+  height: 46px;
+  border-radius: 16px;
+}
+
+.face-admin-tabs {
+  margin-bottom: 16px;
+  padding: 5px;
+  border-radius: 18px;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.face-admin-tabs button {
+  min-height: 44px;
+  font-size: 15px;
+}
+
+.face-admin-panel {
+  padding: 18px;
+}
+
+.face-filter-grid-logs {
+  margin-bottom: 16px;
+}
+
+.face-filter-grid label,
+.face-form-grid label {
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.face-filter-grid input,
+.face-form-grid input,
+.face-form-grid select {
+  height: 44px;
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.55);
+}
+
+.face-filter-grid input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  cursor: pointer;
+  filter: brightness(0.55);
+}
+
+.app-shell[data-theme="dark"] .face-filter-grid input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.2);
+}
+
+.face-admin-table-wrap,
+.face-register-list {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(59, 130, 246, 0.55) rgba(148, 163, 184, 0.12);
+}
+
+.face-modal::-webkit-scrollbar,
+.face-admin-table-wrap::-webkit-scrollbar,
+.face-register-list::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.face-modal::-webkit-scrollbar-track,
+.face-admin-table-wrap::-webkit-scrollbar-track,
+.face-register-list::-webkit-scrollbar-track {
+  background: rgba(148, 163, 184, 0.10);
+  border-radius: 999px;
+}
+
+.face-modal::-webkit-scrollbar-thumb,
+.face-admin-table-wrap::-webkit-scrollbar-thumb,
+.face-register-list::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #60a5fa, #2563eb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.polished-table-wrap {
+  margin-top: 0;
+  border-radius: 18px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.52);
+}
+
+.logs-table-wrap {
+  max-height: 54vh;
+}
+
+.register-table-wrap {
+  max-height: 56vh;
+}
+
+.face-admin-table {
+  min-width: 100%;
+}
+
+.face-admin-table thead th {
+  background: linear-gradient(180deg, rgba(59,130,246,0.08), rgba(255,255,255,0.96));
+}
+
+.app-shell[data-theme="dark"] .face-admin-table thead th {
+  background: linear-gradient(180deg, rgba(59,130,246,0.18), rgba(30,41,59,0.98));
+}
+
+.face-admin-table th,
+.face-admin-table td {
+  padding: 13px 14px;
+  vertical-align: middle;
+}
+
+.face-admin-table tbody tr:nth-child(even) {
+  background: rgba(148, 163, 184, 0.05);
+}
+
+.face-admin-table tbody tr:hover {
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.face-register-layout {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.95fr) minmax(0, 1.25fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.face-register-pane,
+.face-register-list {
+  padding: 18px;
+}
+
+.face-register-pane-title {
+  font-size: 20px;
+  font-weight: 950;
+  margin-bottom: 12px;
+}
+
+.face-form-grid.register-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.face-form-grid.register-grid label:last-child {
+  grid-column: 1 / -1;
+}
+
+.register-camera {
+  min-height: 280px;
+  margin-top: 6px;
+  border-radius: 22px;
+}
+
+.compact-actions {
+  justify-content: flex-start;
+}
+
+.register-result-card {
+  border-radius: 18px;
+  background: rgba(34, 197, 94, 0.08);
+  border-color: rgba(34, 197, 94, 0.20);
+}
+
+.face-admin-title {
+  font-size: 19px;
+  font-weight: 950;
+  margin-bottom: 12px;
+}
+
+.face-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 92px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.face-status-pill.active {
+  color: #166534;
+  background: rgba(34, 197, 94, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.24);
+}
+
+.face-status-pill.inactive {
+  color: #9f1239;
+  background: rgba(244, 63, 94, 0.14);
+  border: 1px solid rgba(244, 63, 94, 0.24);
+}
+
+.face-table-action {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  min-width: 108px;
+}
+
+.face-status {
+  border-radius: 18px;
+  padding: 12px 14px;
+  margin-top: 14px;
+}
+
+@media (max-width: 1100px) {
+  .face-register-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .logs-table-wrap,
+  .register-table-wrap {
+    max-height: 42vh;
+  }
+}
+
+@media (max-width: 768px) {
+  .face-modal,
+  .face-modal-confirm-only,
+  .face-modal-admin,
+  .face-modal-admin-auth {
+    width: min(100%, calc(100vw - 18px));
+    padding: 14px;
+    border-radius: 22px;
+  }
+
+  .camera-only-card {
+    min-height: 380px;
+    height: 60vh;
+  }
+
+  .face-camera-corners span:nth-child(1),
+  .face-camera-corners span:nth-child(2),
+  .face-camera-corners span:nth-child(3),
+  .face-camera-corners span:nth-child(4) {
+    width: 34px;
+    height: 34px;
+    top: auto;
+    left: auto;
+    right: auto;
+    bottom: auto;
+  }
+
+  .face-form-grid.register-grid,
+  .face-filter-grid,
+  .face-action-grid.two {
+    grid-template-columns: 1fr;
+  }
+}

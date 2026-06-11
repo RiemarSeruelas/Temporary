@@ -3130,58 +3130,232 @@ button:hover {
 }
 
 /* =========================================================
-   26 - TOPBAR CONFIRMATION CLEANUP
+   26 - POLISHED CONFIRMATION / ADMIN LAYOUT OVERRIDES
 ========================================================= */
-.desktop-topbar {
+.polished-topbar {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.topbar-left {
-  gap: 10px;
+.topbar-machines-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.polished-actions {
+  gap: 9px;
   flex-wrap: nowrap;
 }
 
-.topbar-right {
-  gap: 10px;
-}
-
-.top-machine-tabs {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
 .top-confirm-btn {
-  height: 36px;
-  min-height: 36px;
-  padding: 0 18px;
-  flex-shrink: 0;
-  box-shadow: 0 10px 22px rgba(15, 140, 255, 0.26);
+  height: 34px;
+  min-width: 126px;
+  padding: 0 16px;
+  box-shadow: 0 10px 22px rgba(15, 140, 255, 0.28);
 }
 
 .theme-toggle-btn {
   min-width: 92px;
 }
 
-.topbar .top-view-select-wrap {
-  flex-shrink: 0;
+.summary-view-select-wrap {
+  height: 100%;
+  min-height: 54px;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-@media (max-width: 980px) {
-  .desktop-topbar {
+.summary-view-select-wrap span {
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  opacity: 0.72;
+}
+
+.summary-view-select {
+  height: 24px;
+  min-width: 70px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: white;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 950;
+  outline: none;
+}
+
+.summary-view-select option {
+  color: #0f172a;
+}
+
+.face-modal {
+  width: min(980px, 100%);
+}
+
+.face-action-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.clean-confirm-camera {
+  min-height: 420px;
+}
+
+.register-camera {
+  min-height: 300px;
+}
+
+.face-admin-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 4px;
+  margin: 0 0 12px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+}
+
+.face-admin-tabs button {
+  flex: 1;
+  min-height: 36px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 950;
+}
+
+.face-admin-tabs button.active {
+  background: linear-gradient(135deg, #0b4ea2, #0f8cff);
+  color: white;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
+}
+
+.face-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.face-filter-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 950;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.face-filter-grid input {
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--text);
+  padding: 0 12px;
+  outline: none;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.face-form-grid.register-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.face-admin-table-wrap.tall {
+  max-height: 420px;
+}
+
+.face-table-action {
+  border: none;
+  border-radius: 999px;
+  padding: 7px 10px;
+  cursor: pointer;
+  color: white;
+  background: #ef4444;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.face-table-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  background: var(--muted);
+}
+
+.confirm-toast {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 100100;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 16px;
+  border-radius: 16px;
+  color: #14532d;
+  background: rgba(220, 252, 231, 0.96);
+  border: 1px solid rgba(34, 197, 94, 0.32);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.22);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.confirm-toast-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: white;
+  background: #22c55e;
+}
+
+@media (max-width: 1100px) {
+  .polished-topbar,
+  .desktop-topbar.polished-topbar {
     grid-template-columns: 1fr;
-    gap: 8px;
   }
 
   .topbar-left,
-  .topbar-right {
+  .polished-actions {
+    justify-content: space-between;
     width: 100%;
-    flex-wrap: wrap;
-    justify-content: flex-start;
   }
 
-  .topbar-right {
-    justify-content: flex-end;
+  .topbar-machines-inline {
+    overflow-x: auto;
+  }
+
+  .face-filter-grid,
+  .face-form-grid.register-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .face-action-grid.two,
+  .face-filter-grid,
+  .face-form-grid.register-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-view-select-wrap {
+    padding: 0 10px;
+  }
+
+  .clean-confirm-camera {
+    min-height: 270px;
   }
 }

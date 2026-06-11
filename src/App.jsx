@@ -249,8 +249,15 @@ export default function App() {
   const [selectedPoint, setSelectedPoint] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [faceModalOpen, setFaceModalOpen] = useState(false);
+  const [confirmToast, setConfirmToast] = useState("");
 
   const activeMachine = MACHINE_CONFIGS[activeMachineId];
+
+  function showConfirmationToast(message) {
+    setConfirmToast(message);
+    window.clearTimeout(showConfirmationToast.timer);
+    showConfirmationToast.timer = window.setTimeout(() => setConfirmToast(""), 3600);
+  }
 
   /* =========================================================
      03 - FETCH HIGHBYTE / BACKEND DATA
@@ -425,69 +432,49 @@ const machineRows = useMemo(() => {
           10 - TOP HEADER
       ========================================================= */}
 
-      <header className="topbar">
-        <div className="desktop-topbar">
-          <div className="topbar-left">
-            <div className="brand-card">
-              <div className="brand-icon">⚙️</div>
-              <div>
-                <div className="brand-title">MACHINE DASHBOARD</div>
-                <div className="brand-subtitle">HighByte MQTT Monitoring System</div>
-              </div>
-            </div>
-
-            <div className="top-machine-tabs">
-              {Object.values(MACHINE_CONFIGS).map((machine) => (
-                <button
-                  key={machine.id}
-                  className={`top-nav-btn ${
-                    activeMachineId === machine.id ? "active" : ""
-                  }`}
-                  onClick={() => setActiveMachineId(machine.id)}
-                >
-                  {machine.name}
-                </button>
-              ))}
-            </div>
-
-            <label className="top-view-select-wrap" title="Switch machine view">
-              <span>View</span>
-              <select
-                className="top-view-select"
-                value={viewMode}
-                onChange={(event) => {
-                  setViewMode(event.target.value);
-                  resetView();
-                }}
-              >
-                <option value="2d">2D</option>
-                <option value="3d">3D</option>
-              </select>
-            </label>
-
-            <button
-              className="face-confirm-btn top-confirm-btn"
-              onClick={() => setFaceModalOpen(true)}
-            >
-              Confirm Check
-            </button>
-          </div>
-
-          <div className="topbar-right">
-            <div className={`top-state-inline ${getStatusClass(status)}`}>
-              <div className="top-state-dot" />
-              <span>{status}</span>
-            </div>
-
-            <button
-              className="top-nav-btn theme-toggle-btn"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            >
-              {theme === "dark" ? "☀ Light" : "🌙 Dark"}
-            </button>
-          </div>
+     <header className="topbar">
+  <div className="desktop-topbar polished-topbar">
+    <div className="topbar-left">
+      <div className="brand-card">
+        <div className="brand-icon">⚙️</div>
+        <div>
+          <div className="brand-title">MACHINE DASHBOARD</div>
+          <div className="brand-subtitle">HighByte MQTT Monitoring System</div>
         </div>
-      </header>
+      </div>
+
+      <div className="topbar-machines-inline">
+        {Object.values(MACHINE_CONFIGS).map((machine) => (
+          <button
+            key={machine.id}
+            className={`top-nav-btn ${activeMachineId === machine.id ? "active" : ""}`}
+            onClick={() => setActiveMachineId(machine.id)}
+          >
+            {machine.name}
+          </button>
+        ))}
+      </div>
+    </div>
+
+    <div className="topbar-right polished-actions">
+      <button className="face-confirm-btn top-confirm-btn" onClick={() => setFaceModalOpen(true)}>
+        Confirm Check
+      </button>
+
+      <div className={`top-state-inline ${getStatusClass(status)}`}>
+        <div className="top-state-dot" />
+        <span>{status}</span>
+      </div>
+
+      <button
+        className="top-nav-btn theme-toggle-btn"
+        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      >
+        {theme === "dark" ? "☀ Light" : "🌙 Dark"}
+      </button>
+    </div>
+  </div>
+</header>
 
       {/* =========================================================
           11 - SUMMARY STRIP
@@ -513,6 +500,20 @@ const machineRows = useMemo(() => {
         </div>
 
         <div className="summary-stats">
+          <label className="summary-view-select-wrap" title="Switch machine view">
+            <span>VIEW</span>
+            <select
+              className="summary-view-select"
+              value={viewMode}
+              onChange={(event) => {
+                setViewMode(event.target.value);
+                resetView();
+              }}
+            >
+              <option value="2d">2D</option>
+              <option value="3d">3D</option>
+            </select>
+          </label>
           <SummaryStat value={attentionRows.length} label="ATTENTION" variant="red" />
           <SummaryStat value={zoneRows.length} label="ZONES" variant="green" />
           <SummaryStat value={isStopped ? "STOP" : "-"} label="STOPPED" variant="red" />
@@ -832,7 +833,15 @@ const machineRows = useMemo(() => {
           machines={Object.values(MACHINE_CONFIGS)}
           defaultMachineId={activeMachineId}
           onClose={() => setFaceModalOpen(false)}
+          onConfirmed={(message) => showConfirmationToast(message)}
         />
+      )}
+
+      {confirmToast && (
+        <div className="confirm-toast">
+          <span className="confirm-toast-dot">✓</span>
+          <span>{confirmToast}</span>
+        </div>
       )}
     </div>
   );
@@ -1035,18 +1044,19 @@ function MachineModel({ url, scale, position, rotation }) {
 
 useGLTF.preload("/models/mespack.glb");
 
-function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
+function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed }) {
   const [mode, setMode] = useState("menu");
+  const [adminAuthed, setAdminAuthed] = useState(false);
+  const [adminTab, setAdminTab] = useState("logs");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [stream, setStream] = useState(null);
-  const [lastConfirmation, setLastConfirmation] = useState(null);
   const [lastRegister, setLastRegister] = useState(null);
   const [adminPassword, setAdminPassword] = useState("");
   const [adminLogs, setAdminLogs] = useState([]);
   const [adminPeople, setAdminPeople] = useState([]);
-  const [unregisterFaceId, setUnregisterFaceId] = useState("");
+  const [filters, setFilters] = useState({ date: "", name: "", machine: "", department: "" });
   const [form, setForm] = useState({
     person_name: "",
     employee_id: "",
@@ -1061,6 +1071,16 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
   const machineOptions = machines?.length ? machines : [{ id: "mespack", name: "Mespack" }];
   const selectedMachineName = machineOptions.find((m) => m.id === form.machine)?.name || form.machine;
 
+  const filteredLogs = adminLogs.filter((row) => {
+    const rowDate = row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : "";
+    const nameOk = !filters.name || String(row.person_name || "").toLowerCase().includes(filters.name.toLowerCase());
+    const deptOk = !filters.department || String(row.department || "").toLowerCase().includes(filters.department.toLowerCase());
+    const machineText = `${row.machine || ""} ${row.machine_name || ""}`.toLowerCase();
+    const machineOk = !filters.machine || machineText.includes(filters.machine.toLowerCase());
+    const dateOk = !filters.date || rowDate === filters.date;
+    return nameOk && deptOk && machineOk && dateOk;
+  });
+
   useEffect(() => {
     return () => stopCamera();
   }, []);
@@ -1068,21 +1088,17 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
   async function startCamera() {
     setError("");
     setStatus("Opening camera...");
-
     try {
       const nextStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
       });
-
       setStream(nextStream);
-
       if (videoRef.current) {
         videoRef.current.srcObject = nextStream;
         await videoRef.current.play();
       }
-
-      setStatus("Camera ready. Keep your face centered.");
+      setStatus("Camera ready.");
     } catch (err) {
       setError(`Camera failed: ${err.message}`);
       setStatus("");
@@ -1090,9 +1106,7 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
   }
 
   function stopCamera() {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-    }
+    if (stream) stream.getTracks().forEach((track) => track.stop());
     setStream(null);
   }
 
@@ -1101,7 +1115,6 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
     setMode("menu");
     setError("");
     setStatus("");
-    setLastConfirmation(null);
     setLastRegister(null);
   }
 
@@ -1109,12 +1122,20 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
     setMode(nextMode);
     setError("");
     setStatus("");
-    setLastConfirmation(null);
     setLastRegister(null);
-    setAdminLogs([]);
-    setAdminPeople([]);
+    if (nextMode === "confirm") {
+      setTimeout(startCamera, 80);
+    } else {
+      stopCamera();
+    }
+  }
 
-    if (nextMode === "register" || nextMode === "confirm") {
+  function chooseAdminTab(nextTab) {
+    setAdminTab(nextTab);
+    setError("");
+    setStatus("");
+    setLastRegister(null);
+    if (nextTab === "register") {
       setTimeout(startCamera, 80);
     } else {
       stopCamera();
@@ -1124,17 +1145,13 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
   function captureImage() {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-
     if (!video || !canvas || !video.videoWidth || !video.videoHeight) {
       throw new Error("Camera is not ready yet.");
     }
-
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-
     const ctx = canvas.getContext("2d");
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
     return canvas.toDataURL("image/jpeg", 0.92);
   }
 
@@ -1144,13 +1161,8 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-
     const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      throw new Error(data.error || data.message || `Request failed ${res.status}`);
-    }
-
+    if (!res.ok) throw new Error(data.error || data.message || `Request failed ${res.status}`);
     return data;
   }
 
@@ -1159,22 +1171,42 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
       setError("Enter the operator name first.");
       return false;
     }
-
     if (!form.department.trim()) {
       setError("Enter the department first.");
       return false;
     }
-
     return true;
+  }
+
+  async function loadAdminData(password = adminPassword) {
+    const data = await postJson("/api/machine-check/admin/logs", { password });
+    setAdminLogs(data.logs || []);
+    setAdminPeople(data.people || []);
+    return data;
+  }
+
+  async function handleAdminEnter() {
+    setLoading(true);
+    setError("");
+    setStatus("Checking admin password...");
+    try {
+      const data = await loadAdminData(adminPassword);
+      setAdminAuthed(true);
+      setAdminTab("logs");
+      setStatus(`Loaded ${(data.logs || []).length} confirmations.`);
+    } catch (err) {
+      setError(err.message);
+      setStatus("");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleRegister() {
     if (!validateOperatorFields()) return;
-
     setLoading(true);
     setError("");
-    setStatus("Capturing and registering face to Face API...");
-
+    setStatus("Registering face...");
     try {
       const image = captureImage();
       const data = await postJson("/api/face/register", {
@@ -1182,10 +1214,10 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
         machine_name: selectedMachineName,
         image,
       });
-
       setLastRegister(data);
-      setStatus(`Registered ${form.person_name} in Face API and PostgreSQL.`);
+      setStatus(`Registered ${form.person_name}.`);
       stopCamera();
+      await loadAdminData(adminPassword);
     } catch (err) {
       setError(err.message);
       setStatus("");
@@ -1197,20 +1229,17 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
   async function handleConfirmCheck() {
     setLoading(true);
     setError("");
-    setStatus("Scanning face and saving machine check confirmation...");
-    setLastConfirmation(null);
-
+    setStatus("Scanning...");
     try {
       const image = captureImage();
       const data = await postJson("/api/machine-check/confirm", {
-        ...form,
+        machine: defaultMachineId || form.machine,
         machine_name: selectedMachineName,
         image,
       });
-
-      setLastConfirmation(data);
-      setStatus(`Confirmed. ${data.log.person_name} was saved for ${data.log.machine_name || selectedMachineName}.`);
       stopCamera();
+      onClose();
+      onConfirmed?.(`Confirmed: ${data.log?.person_name || "Machine check saved"}`);
     } catch (err) {
       setError(err.message);
       setStatus("");
@@ -1219,44 +1248,19 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
     }
   }
 
-  async function handleAdminLoad() {
+  async function handleUnregister(row) {
+    if (!row?.face_api_id && !row?.face_img_name) return;
     setLoading(true);
     setError("");
-    setStatus("Loading confirmation logs from PostgreSQL...");
-
-    try {
-      const data = await postJson("/api/machine-check/admin/logs", { password: adminPassword });
-      setAdminLogs(data.logs || []);
-      setAdminPeople(data.people || []);
-      setStatus(`Loaded ${(data.logs || []).length} confirmations and ${(data.people || []).length} registered faces.`);
-    } catch (err) {
-      setError(err.message);
-      setStatus("");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleUnregister() {
-    if (!unregisterFaceId.trim()) {
-      setError("Enter Face API ID or img_name first.");
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-    setStatus("Requesting face unregister/deactivate...");
-
-    const isNumberId = /^\d+$/.test(unregisterFaceId.trim());
-
+    setStatus("Deactivating face...");
     try {
       const data = await postJson("/api/face/unregister", {
         password: adminPassword,
-        face_api_id: isNumberId ? Number(unregisterFaceId.trim()) : undefined,
-        face_img_name: isNumberId ? undefined : unregisterFaceId.trim(),
+        face_api_id: row.face_api_id || undefined,
+        face_img_name: row.face_img_name || undefined,
       });
-
-      setStatus(data.message || "Unregister request completed.");
+      setStatus(data.message || "Face deactivated.");
+      await loadAdminData(adminPassword);
     } catch (err) {
       setError(err.message);
       setStatus("");
@@ -1270,11 +1274,10 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
       <div className="face-modal" onClick={(e) => e.stopPropagation()}>
         <div className="face-modal-header">
           <div>
-            <div className="face-modal-kicker">Machine Check Confirmation</div>
+            <div className="face-modal-kicker">Machine Check</div>
             <div className="face-modal-title">
-              {mode === "menu" && "Choose Action"}
-              {mode === "register" && "Register Operator Face"}
-              {mode === "confirm" && "Confirm Machine Check"}
+              {mode === "menu" && "Confirmation"}
+              {mode === "confirm" && "Confirmation"}
               {mode === "admin" && "Admin"}
             </div>
           </div>
@@ -1282,127 +1285,35 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
         </div>
 
         {mode === "menu" && (
-          <div className="face-action-grid">
+          <div className="face-action-grid two">
             <button className="face-action-card" onClick={() => chooseMode("confirm")}>
-              <strong>Confirm Check</strong>
-              <span>Scan face, match PostgreSQL details, then save confirmation</span>
-            </button>
-            <button className="face-action-card" onClick={() => chooseMode("register")}>
-              <strong>Register Face</strong>
-              <span>Register in Face API and save operator details in PostgreSQL</span>
+              <strong>Confirmation</strong>
+              <span>Scan face and save the machine check.</span>
             </button>
             <button className="face-action-card" onClick={() => chooseMode("admin")}>
               <strong>Admin</strong>
-              <span>View confirmations and unregister faces</span>
+              <span>View logs, register faces, and deactivate operators.</span>
             </button>
           </div>
         )}
 
-        {(mode === "register" || mode === "confirm") && (
+        {mode === "confirm" && (
           <>
-            <div className="face-form-grid">
-              {mode === "register" && (
-                <>
-                  <label>
-                    Operator Name
-                    <input
-                      value={form.person_name}
-                      onChange={(e) => setForm((prev) => ({ ...prev, person_name: e.target.value }))}
-                      placeholder="e.g. Riemar Seruelas"
-                    />
-                  </label>
-                  <label>
-                    Employee ID
-                    <input
-                      value={form.employee_id}
-                      onChange={(e) => setForm((prev) => ({ ...prev, employee_id: e.target.value }))}
-                      placeholder="Optional"
-                    />
-                  </label>
-                  <label>
-                    Department
-                    <input
-                      value={form.department}
-                      onChange={(e) => setForm((prev) => ({ ...prev, department: e.target.value }))}
-                      placeholder="e.g. Engineering"
-                    />
-                  </label>
-                  <label>
-                    Role
-                    <select
-                      value={form.role}
-                      onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value }))}
-                    >
-                      <option value="operator">Operator</option>
-                      <option value="technician">Technician</option>
-                      <option value="engineer">Engineer</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </label>
-                </>
-              )}
-              {mode === "confirm" && (
-                <div className="face-helper-text">
-                  Face scan only. Operator details will be pulled from PostgreSQL after recognition.
-                </div>
-              )}
-              {mode === "register" && (
-                <label>
-                  Machine
-                  <select
-                    value={form.machine}
-                    onChange={(e) => setForm((prev) => ({ ...prev, machine: e.target.value }))}
-                  >
-                    {machineOptions.map((machine) => (
-                      <option key={machine.id} value={machine.id}>{machine.name}</option>
-                    ))}
-                  </select>
-                </label>
-              )}
-            </div>
-
-            <div className="face-camera-card">
+            <div className="face-camera-card clean-confirm-camera">
               <video ref={videoRef} className="face-camera-video" playsInline muted />
               <canvas ref={canvasRef} style={{ display: "none" }} />
             </div>
-
             <div className="face-modal-actions">
               <button className="face-secondary-btn" onClick={resetToMenu}>Back</button>
               {!stream && <button className="face-secondary-btn" onClick={startCamera}>Open Camera</button>}
-              {mode === "register" && (
-                <button className="face-primary-btn" onClick={handleRegister} disabled={loading || !stream}>
-                  {loading ? "Registering..." : "Register Operator Face"}
-                </button>
-              )}
-              {mode === "confirm" && (
-                <button className="face-primary-btn" onClick={handleConfirmCheck} disabled={loading || !stream}>
-                  {loading ? "Saving..." : "Confirm Machine Check"}
-                </button>
-              )}
+              <button className="face-primary-btn" onClick={handleConfirmCheck} disabled={loading || !stream}>
+                {loading ? "Confirming..." : "Confirm"}
+              </button>
             </div>
-
-            {lastConfirmation && (
-              <div className="face-result-card">
-                <strong>{lastConfirmation.log.person_name}</strong>
-                <span>{lastConfirmation.log.department}</span>
-                <span>Machine: {lastConfirmation.log.machine_name || selectedMachineName}</span>
-                <span>Face ID: {lastConfirmation.candidate.face_api_id}</span>
-                <span>Confidence: {lastConfirmation.candidate.confidence ?? "-"}</span>
-              </div>
-            )}
-
-            {lastRegister && (
-              <div className="face-result-card">
-                <strong>Registered in Face API + PostgreSQL</strong>
-                <span>Name: {lastRegister.operator?.person_name ?? form.person_name}</span>
-                <span>Face ID: {lastRegister.candidate?.face_api_id ?? "Check Face API response"}</span>
-                <span>Image ID: {lastRegister.candidate?.face_img_name ?? "-"}</span>
-              </div>
-            )}
           </>
         )}
 
-        {mode === "admin" && (
+        {mode === "admin" && !adminAuthed && (
           <>
             <div className="face-form-grid single">
               <label>
@@ -1412,93 +1323,142 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose }) {
                   value={adminPassword}
                   onChange={(e) => setAdminPassword(e.target.value)}
                   placeholder="Enter admin password"
-                />
-              </label>
-              <label>
-                Unregister Face ID / Image ID
-                <input
-                  value={unregisterFaceId}
-                  onChange={(e) => setUnregisterFaceId(e.target.value)}
-                  placeholder="e.g. 8 or img_name"
+                  onKeyDown={(e) => e.key === "Enter" && handleAdminEnter()}
                 />
               </label>
             </div>
-
             <div className="face-modal-actions">
               <button className="face-secondary-btn" onClick={resetToMenu}>Back</button>
-              <button className="face-primary-btn" onClick={handleAdminLoad} disabled={loading}>
-                {loading ? "Loading..." : "Load Confirmations"}
-              </button>
-              <button className="face-secondary-btn" onClick={handleUnregister} disabled={loading}>
-                Unregister / Deactivate
+              <button className="face-primary-btn" onClick={handleAdminEnter} disabled={loading || !adminPassword}>
+                {loading ? "Checking..." : "Enter Admin"}
               </button>
             </div>
+          </>
+        )}
 
-            {adminPeople.length > 0 && (
-              <div className="face-admin-table-wrap">
-                <div className="face-admin-title">Registered Faces</div>
-                <table className="face-admin-table">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Name</th>
-                      <th>Employee</th>
-                      <th>Department</th>
-                      <th>Machine</th>
-                      <th>Face ID</th>
-                      <th>Image ID</th>
-                      <th>Active</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {adminPeople.map((row) => (
-                      <tr key={row.id}>
-                        <td>{row.id}</td>
-                        <td>{row.person_name}</td>
-                        <td>{row.employee_id || "-"}</td>
-                        <td>{row.department || "-"}</td>
-                        <td>{row.machine_name || row.machine || "-"}</td>
-                        <td>{row.face_api_id || "-"}</td>
-                        <td>{row.face_img_name || "-"}</td>
-                        <td>{row.is_active ? "Yes" : "No"}</td>
+        {mode === "admin" && adminAuthed && (
+          <>
+            <div className="face-admin-tabs">
+              <button className={adminTab === "logs" ? "active" : ""} onClick={() => chooseAdminTab("logs")}>Logs</button>
+              <button className={adminTab === "register" ? "active" : ""} onClick={() => chooseAdminTab("register")}>Register</button>
+            </div>
+
+            {adminTab === "logs" && (
+              <>
+                <div className="face-filter-grid">
+                  <label>Date<input type="date" value={filters.date} onChange={(e) => setFilters((p) => ({ ...p, date: e.target.value }))} /></label>
+                  <label>Name<input value={filters.name} onChange={(e) => setFilters((p) => ({ ...p, name: e.target.value }))} placeholder="Filter name" /></label>
+                  <label>Machine<input value={filters.machine} onChange={(e) => setFilters((p) => ({ ...p, machine: e.target.value }))} placeholder="Filter machine" /></label>
+                  <label>Department<input value={filters.department} onChange={(e) => setFilters((p) => ({ ...p, department: e.target.value }))} placeholder="Filter department" /></label>
+                </div>
+
+                <div className="face-admin-table-wrap tall">
+                  <table className="face-admin-table">
+                    <thead>
+                      <tr>
+                        <th>Timestamp</th>
+                        <th>Name</th>
+                        <th>Department</th>
+                        <th>Machine</th>
+                        <th>Employee</th>
+                        <th>Role</th>
+                        <th>Face ID</th>
+                        <th>Image ID</th>
+                        <th>Confidence</th>
+                        <th>Distance</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {filteredLogs.map((row) => (
+                        <tr key={row.id}>
+                          <td>{formatDateTime(row.created_at)}</td>
+                          <td>{row.person_name}</td>
+                          <td>{row.department || "-"}</td>
+                          <td>{row.machine_name || row.machine || "-"}</td>
+                          <td>{row.employee_id || "-"}</td>
+                          <td>{row.role || "-"}</td>
+                          <td>{row.face_api_id || "-"}</td>
+                          <td>{row.face_img_name || "-"}</td>
+                          <td>{row.face_confidence ?? "-"}</td>
+                          <td>{row.face_distance ?? "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
 
-            {adminLogs.length > 0 && (
-              <div className="face-admin-table-wrap">
-                <table className="face-admin-table">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Confirmed At</th>
-                      <th>Name</th>
-                      <th>Department</th>
-                      <th>Machine</th>
-                      <th>Face ID</th>
-                      <th>Image ID</th>
-                      <th>Confidence</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {adminLogs.map((row) => (
-                      <tr key={row.id}>
-                        <td>{row.id}</td>
-                        <td>{formatDateTime(row.created_at)}</td>
-                        <td>{row.person_name}</td>
-                        <td>{row.department}</td>
-                        <td>{row.machine_name || row.machine}</td>
-                        <td>{row.face_api_id}</td>
-                        <td>{row.face_img_name}</td>
-                        <td>{row.face_confidence ?? "-"}</td>
+            {adminTab === "register" && (
+              <>
+                <div className="face-form-grid register-grid">
+                  <label>Operator Name<input value={form.person_name} onChange={(e) => setForm((p) => ({ ...p, person_name: e.target.value }))} placeholder="e.g. Justin" /></label>
+                  <label>Employee ID<input value={form.employee_id} onChange={(e) => setForm((p) => ({ ...p, employee_id: e.target.value }))} placeholder="Optional" /></label>
+                  <label>Department<input value={form.department} onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))} placeholder="e.g. Engineering" /></label>
+                  <label>Role<select value={form.role} onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}><option value="operator">Operator</option><option value="technician">Technician</option><option value="engineer">Engineer</option><option value="admin">Admin</option></select></label>
+                  <label>Machine<select value={form.machine} onChange={(e) => setForm((p) => ({ ...p, machine: e.target.value }))}>{machineOptions.map((machine) => <option key={machine.id} value={machine.id}>{machine.name}</option>)}</select></label>
+                </div>
+
+                <div className="face-camera-card register-camera">
+                  <video ref={videoRef} className="face-camera-video" playsInline muted />
+                  <canvas ref={canvasRef} style={{ display: "none" }} />
+                </div>
+
+                <div className="face-modal-actions">
+                  {!stream && <button className="face-secondary-btn" onClick={startCamera}>Open Camera</button>}
+                  <button className="face-primary-btn" onClick={handleRegister} disabled={loading || !stream}>
+                    {loading ? "Registering..." : "Register Face"}
+                  </button>
+                  <button className="face-secondary-btn" onClick={() => loadAdminData(adminPassword)} disabled={loading}>Refresh</button>
+                </div>
+
+                {lastRegister && (
+                  <div className="face-result-card">
+                    <strong>Registered</strong>
+                    <span>Name: {lastRegister.operator?.person_name ?? form.person_name}</span>
+                    <span>Face ID: {lastRegister.candidate?.face_api_id ?? "Check Face API response"}</span>
+                    <span>Image ID: {lastRegister.candidate?.face_img_name ?? "-"}</span>
+                  </div>
+                )}
+
+                <div className="face-admin-table-wrap tall">
+                  <div className="face-admin-title">Registered Faces</div>
+                  <table className="face-admin-table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Department</th>
+                        <th>Machine</th>
+                        <th>Employee</th>
+                        <th>Role</th>
+                        <th>Face ID</th>
+                        <th>Image ID</th>
+                        <th>Active</th>
+                        <th>Action</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {adminPeople.map((row) => (
+                        <tr key={row.id}>
+                          <td>{row.person_name}</td>
+                          <td>{row.department || "-"}</td>
+                          <td>{row.machine_name || row.machine || "-"}</td>
+                          <td>{row.employee_id || "-"}</td>
+                          <td>{row.role || "-"}</td>
+                          <td>{row.face_api_id || "-"}</td>
+                          <td>{row.face_img_name || "-"}</td>
+                          <td>{row.is_active ? "Yes" : "No"}</td>
+                          <td>
+                            <button className="face-table-action" onClick={() => handleUnregister(row)} disabled={loading || !row.is_active}>
+                              {row.is_active ? "Unregister" : "Inactive"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </>
         )}

@@ -1303,7 +1303,7 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
 
   return (
     <div className="face-modal-backdrop" onClick={onClose}>
-      <div className={`face-modal ${mode === "confirm" ? "face-modal-confirm-only" : ""} ${mode === "admin" && adminAuthed ? "face-modal-admin" : ""} ${mode === "admin" && !adminAuthed ? "face-modal-admin-auth" : ""}`} onClick={(e) => e.stopPropagation()}>
+      <div className={`face-modal ${mode === "menu" ? "face-modal-menu" : ""} ${mode === "confirm" ? "face-modal-confirm-only" : ""} ${mode === "admin" && adminAuthed ? "face-modal-admin" : ""} ${mode === "admin" && !adminAuthed ? "face-modal-admin-auth" : ""}`} onClick={(e) => e.stopPropagation()}>
         <div className={`face-modal-header ${mode === "confirm" ? "confirm-only-header" : ""}`}>
           {mode !== "confirm" && (
             <div>

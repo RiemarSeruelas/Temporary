@@ -4788,3 +4788,84 @@ button:hover {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* =========================================================
+   32 - CONFIRMATION CLOSE BUTTON FIX
+   Keep X above the camera, not on top of the video.
+========================================================= */
+.face-modal-confirm-only {
+  width: min(960px, calc(100vw - 44px)) !important;
+  height: min(660px, calc(100vh - 44px)) !important;
+  max-width: 960px !important;
+  max-height: 660px !important;
+  padding: 0 !important;
+  margin: auto !important;
+  overflow: visible !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  display: grid !important;
+  grid-template-rows: 44px minmax(0, 1fr) !important;
+  row-gap: 8px !important;
+}
+
+.face-modal-confirm-only .face-modal-header {
+  position: relative !important;
+  top: auto !important;
+  right: auto !important;
+  z-index: 10 !important;
+  width: 100% !important;
+  min-height: 44px !important;
+  height: 44px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+}
+
+.face-modal-confirm-only .face-modal-close {
+  position: relative !important;
+  top: auto !important;
+  right: auto !important;
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: #0f172a !important;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18) !important;
+  display: grid !important;
+  place-items: center !important;
+}
+
+.face-confirm-only-shell {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 auto !important;
+}
+
+.camera-only-card,
+.clean-confirm-camera.camera-only-card {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin: 0 auto !important;
+  border-radius: 22px !important;
+  overflow: hidden !important;
+  background: #020617 !important;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.34) !important;
+}
+
+.camera-only-card .face-camera-video,
+.clean-confirm-camera.camera-only-card .face-camera-video {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: none !important;
+  object-fit: cover !important;
+}

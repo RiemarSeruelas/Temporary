@@ -4,10 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
-    "start:backend": "cd backend && node server.js",
-    "start:frontend": "vite",
-    "dev": "vite",
+    "dev": "concurrently -n BACKEND,FRONTEND -c cyan,green \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "start": "npm run dev",
+    "dev:backend": "cd backend && node server.js",
+    "dev:frontend": "vite",
+    "start:backend": "npm run dev:backend",
+    "start:frontend": "npm run dev:frontend",
     "backend": "cd backend && node server.js",
     "build": "vite build",
     "preview": "vite preview"

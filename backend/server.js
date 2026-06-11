@@ -4,9 +4,32 @@ const cors = require("cors");
 const mqtt = require("mqtt");
 const path = require("path");
 const { Pool } = require("pg");
-require("dotenv").config({ path: path.join(__dirname, ".env"), override: true });
+require("dotenv").config({ path: path.join(__dirname, ".env"), override: true, quiet: true });
 
 const app = express();
+
+const LOG_LEVEL = String(process.env.LOG_LEVEL || "minimal").toLowerCase();
+const VERBOSE_LOGS = LOG_LEVEL === "debug" || LOG_LEVEL === "verbose";
+
+function logInfo(message) {
+  console.log(message);
+}
+
+function logWarn(message) {
+  console.warn(message);
+}
+
+function logError(message, err) {
+  const detail = err?.message || err?.cause?.message || (typeof err === "string" ? err : "");
+  console.error(detail ? `${message}: ${detail}` : message);
+}
+
+function logDebug(message, data) {
+  if (!VERBOSE_LOGS) return;
+  if (data === undefined) console.log(message);
+  else console.log(message, data);
+}
+
 
 app.use(cors());
 app.use(express.json({ limit: "25mb" }));
@@ -488,8 +511,8 @@ async function ensureTables() {
 
 
 if (MQTT_BROKER) {
-  console.log("Connecting to MQTT broker:", MQTT_BROKER);
-  console.log("Subscribing topic:", MQTT_TOPIC);
+  logDebug(`MQTT broker: ${MQTT_BROKER}`);
+  logDebug(`MQTT topic: ${MQTT_TOPIC}`);
 
   const mqttClient = mqtt.connect(MQTT_BROKER, {
     username: MQTT_USERNAME,
@@ -503,31 +526,31 @@ if (MQTT_BROKER) {
     mqttConnected = true;
     latestMachineData.mqttConnected = true;
 
-    console.log("✅ MQTT connected");
+    logInfo("✅ MQTT connected");
     mqttClient.subscribe(MQTT_TOPIC, (err) => {
       if (err) {
-        console.error("❌ MQTT subscribe error:", err.message);
+        logError("❌ MQTT subscribe error", err);
         return;
       }
 
-      console.log("✅ Subscribed to:", MQTT_TOPIC);
+      logDebug(`✅ Subscribed to ${MQTT_TOPIC}`);
     });
   });
 
   mqttClient.on("reconnect", () => {
-    console.log("Reconnecting to MQTT...");
+    logDebug("Reconnecting to MQTT...");
   });
 
   mqttClient.on("close", () => {
     mqttConnected = false;
     latestMachineData.mqttConnected = false;
-    console.log("⚠ MQTT connection closed");
+    logDebug("⚠ MQTT connection closed");
   });
 
   mqttClient.on("error", (err) => {
     mqttConnected = false;
     latestMachineData.mqttConnected = false;
-    console.error("❌ MQTT error:", err.message);
+    logError("❌ MQTT error", err);
   });
 
   mqttClient.on("message", (topic, message) => {
@@ -541,7 +564,7 @@ if (MQTT_BROKER) {
     try {
       parsed = JSON.parse(rawText);
     } catch {
-      console.error("❌ MQTT payload is not valid JSON");
+      logError("❌ MQTT payload is not valid JSON");
       return;
     }
 
@@ -555,7 +578,7 @@ if (MQTT_BROKER) {
       data: normalized.data,
     };
 
-    console.log("✅ MQTT data updated:", {
+    logDebug("MQTT data updated", {
       topic,
       status: latestMachineData.status,
       doors: latestMachineData.data.doors?.length || 0,
@@ -564,7 +587,7 @@ if (MQTT_BROKER) {
     });
   });
 } else {
-  console.warn("⚠ MQTT_BROKER is empty. Dashboard will stay in WAITING mode until configured.");
+  logWarn("⚠ MQTT_BROKER is empty. Dashboard will stay in WAITING mode until configured.");
 }
 
 app.get("/", (req, res) => {
@@ -659,7 +682,7 @@ app.post("/api/face/register", async (req, res) => {
       searchResponse,
     });
   } catch (err) {
-    console.error("Face register failed:", err);
+    logError("❌ Face register failed", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -699,7 +722,7 @@ app.post("/api/machine-check/confirm", async (req, res) => {
 
     res.json({ ok: true, log, operator, candidate, searchResponse });
   } catch (err) {
-    console.error("Machine check confirmation failed:", err);
+    logError("❌ Machine check confirmation failed", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -732,7 +755,7 @@ app.post("/api/machine-check/admin/logs", async (req, res) => {
 
     res.json({ ok: true, logs: logs.rows, people: people.rows });
   } catch (err) {
-    console.error("Admin confirmation logs failed:", err);
+    logError("❌ Admin logs failed", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -780,7 +803,7 @@ app.post("/api/face/unregister", async (req, res) => {
       faceApiUnregisterResponse,
     });
   } catch (err) {
-    console.error("Face unregister failed:", err);
+    logError("❌ Face unregister failed", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -798,15 +821,15 @@ app.get("/api/face/health", async (req, res) => {
 ensureTables()
   .then(() => {
     app.listen(PORT, () => {
-      console.log(`✅ Backend running on http://localhost:${PORT}`);
-      console.log(`✅ Dashboard endpoint: http://localhost:${PORT}/data`);
-      console.log(`✅ Face API base URL: ${FACE_API_BASE_URL}`);
-      console.log(`✅ App namespace: ${APP_NAMESPACE} (strict=${APP_NAMESPACE_STRICT})`);
-      console.log(`✅ PostgreSQL people table: ${peopleTable}`);
-      console.log(`✅ PostgreSQL confirmations table: ${confirmationsTable}`);
+      logInfo(`✅ Backend running: http://localhost:${PORT}`);
+      logInfo(`✅ Dashboard API: http://localhost:${PORT}/data`);
+      logInfo(`✅ Face API: ${FACE_API_BASE_URL}`);
+      logDebug(`App namespace: ${APP_NAMESPACE} (strict=${APP_NAMESPACE_STRICT})`);
+      logDebug(`PostgreSQL people table: ${peopleTable}`);
+      logInfo(`✅ PostgreSQL: ${peopleTable}, ${confirmationsTable}`);
     });
   })
   .catch((err) => {
-    console.error("❌ Failed to initialize PostgreSQL tables:", err);
+    logError("❌ Failed to initialize PostgreSQL tables", err);
     process.exit(1);
   });

@@ -1,13 +1,4 @@
-PS C:\Users\ASUS\Downloads\Temporary2> Invoke-WebRequest http://localhost:5000/api/face/health
-
-Security Warning: Script Execution Risk                                                                                           
-Invoke-WebRequest parses the content of the web page. Script code in the web page might be run when the page is parsed.           
-      RECOMMENDED ACTION:                                                                                                         
-      Use the -UseBasicParsing switch to avoid script code execution.                                                             
-
-      Do you want to continue?
-    
-[Y] Yes  [A] Yes to All  [N] No  [L] No to All  [S] Suspend  [?] Help (default is "N"): y
+PS C:\Users\ASUS\Downloads\Temporary2\backend> Invoke-WebRequest http://localhost:5178/api/face/health -UseBasicParsing
 
 
 StatusCode        : 200
@@ -15,28 +6,28 @@ StatusDescription : OK
 Content           : {"ok":true,"postgres":true,"faceApi":"http://10.156.119.146:5005","appNamespace":"machine_dashboard","strictN
                     amespace":false}
 RawContent        : HTTP/1.1 200 OK
-                    Access-Control-Allow-Origin: *
-                    Connection: keep-alive
-                    Keep-Alive: timeout=5
+                    Vary: Origin
+                    access-control-allow-origin: *
+                    connection: close
                     Content-Length: 125
                     Content-Type: application/json; charset=utf-8
-                    Date: Wed, 10 Jun 2026 23:56:10 GMT...
-Forms             : {}
-Headers           : {[Access-Control-Allow-Origin, *], [Connection, keep-alive], [Keep-Alive, timeout=5], [Content-Length, 
-                    125]...}
+                    Date: Thu, 11 Jun 2026 00:02:33 GMT
+                    ETag: W/"7d-p...
+Forms             : 
+Headers           : {[Vary, Origin], [access-control-allow-origin, *], [connection, close], [Content-Length, 125]...}
 Images            : {}
 InputFields       : {}
 Links             : {}
-ParsedHtml        : mshtml.HTMLDocumentClass
+ParsedHtml        : 
 RawContentLength  : 125
 
 
 
-PS C:\Users\ASUS\Downloads\Temporary2> Invoke-WebRequest http://localhost:5000/api/machine-check/confirm -Method POST -ContentType "application/json" -Body "{}"
-Invoke-WebRequest : {"error":"machine and image/img are required."}
+PS C:\Users\ASUS\Downloads\Temporary2\backend> Invoke-WebRequest http://localhost:5178/api/machine-check/confirm -Method POST -ContentType "application.json"
+Invoke-WebRequest : {"error":"Cannot destructure property 'machine' of 'req.body' as it is undefined."}
 At line:1 char:1
-+ Invoke-WebRequest http://localhost:5000/api/machine-check/confirm -Me ...
++ Invoke-WebRequest http://localhost:5178/api/machine-check/confirm -Me ...
 + ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : InvalidOperation: (System.Net.HttpWebRequest:HttpWebRequest) [Invoke-WebRequest], WebException
     + FullyQualifiedErrorId : WebCmdletWebResponseException,Microsoft.PowerShell.Commands.InvokeWebRequestCommand
-PS C:\Users\ASUS\Downloads\Temporary2>     
+PS C:\Users\ASUS\Downloads\Temporary2\backend> 

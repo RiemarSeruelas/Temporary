@@ -1307,7 +1307,7 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
         <div className={`face-modal-header ${mode === "confirm" ? "confirm-only-header" : ""}`}>
           {mode !== "confirm" && (
             <div>
-              <div className="face-modal-kicker">Machine Check</div>
+              {!(mode === "admin" && !adminAuthed) && <div className="face-modal-kicker">Machine Check</div>}
               <div className="face-modal-title">
                 {mode === "admin" && "Admin"}
               </div>
@@ -1339,12 +1339,8 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
         )}
 
         {mode === "admin" && !adminAuthed && (
-          <div className="face-admin-auth-card">
-            <div className="face-admin-auth-copy">
-              <div className="face-admin-auth-title">Admin Access</div>
-              <div className="face-admin-auth-subtitle">Enter the administrator password to open logs and registration tools.</div>
-            </div>
-            <div className="face-form-grid single admin-auth-grid">
+          <div className="face-admin-auth-card clean-admin-auth-card">
+            <div className="face-form-grid single admin-auth-grid clean-admin-auth-grid">
               <label>
                 Admin Password
                 <input
@@ -1353,14 +1349,12 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
                   onChange={(e) => setAdminPassword(e.target.value)}
                   placeholder="Enter admin password"
                   onKeyDown={(e) => e.key === "Enter" && handleAdminEnter()}
+                  autoFocus
                 />
               </label>
             </div>
-            <div className="face-modal-actions">
+            <div className="face-modal-actions clean-admin-actions">
               <button className="face-secondary-btn" onClick={resetToMenu}>Back</button>
-              <button className="face-primary-btn" onClick={handleAdminEnter} disabled={loading || !adminPassword}>
-                {loading ? "Checking..." : "Enter Admin"}
-              </button>
             </div>
           </div>
         )}

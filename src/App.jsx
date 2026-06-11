@@ -1334,15 +1334,6 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
             <div className="face-camera-card clean-confirm-camera camera-only-card">
               <video ref={videoRef} className="face-camera-video" playsInline muted />
               <canvas ref={canvasRef} style={{ display: "none" }} />
-              <div className="face-camera-live-chip">LIVE</div>
-              <div className="face-camera-corners">
-                <span />
-                <span />
-                <span />
-                <span />
-              </div>
-              <div className="face-camera-scanline" />
-              {loading && <div className="face-camera-overlay">Scanning face…</div>}
             </div>
           </div>
         )}
@@ -1375,7 +1366,7 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
         )}
 
         {mode === "admin" && adminAuthed && (
-          <>
+          <div className={`face-admin-content ${adminTab === "logs" ? "admin-logs" : "admin-register"}`}>
             <div className="face-admin-tabs">
               <button className={adminTab === "logs" ? "active" : ""} onClick={() => chooseAdminTab("logs")}>Logs</button>
               <button className={adminTab === "register" ? "active" : ""} onClick={() => chooseAdminTab("register")}>Register</button>
@@ -1434,7 +1425,6 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
                   <div className="face-camera-card register-camera">
                     <video ref={videoRef} className="face-camera-video" playsInline muted />
                     <canvas ref={canvasRef} style={{ display: "none" }} />
-                    <div className="face-camera-live-chip">LIVE</div>
                   </div>
 
                   <div className="face-modal-actions compact-actions">
@@ -1492,11 +1482,11 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
 
-        {mode !== "confirm" && status && <div className="face-status success">{status}</div>}
-        {error && <div className="face-status error">{error}</div>}
+        {mode !== "confirm" && mode !== "admin" && status && <div className="face-status success">{status}</div>}
+        {mode !== "confirm" && error && <div className="face-status error">{error}</div>}
       </div>
     </div>
   );

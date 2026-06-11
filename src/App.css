@@ -3787,3 +3787,352 @@ button:hover {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* =========================================================
+   28 - CLEAN ADMIN + CAMERA FINAL OVERRIDES
+   User request: camera only, no outer scroll, cleaner admin
+========================================================= */
+
+/* Camera confirmation: literal camera only */
+.face-modal-confirm-only {
+  width: min(980px, calc(100vw - 40px)) !important;
+  max-height: none !important;
+  height: auto !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.face-modal-confirm-only .face-modal-header {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 5;
+  margin: 0 !important;
+}
+
+.face-modal-confirm-only .face-modal-close {
+  width: 42px;
+  height: 42px;
+  background: rgba(255,255,255,0.92);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+}
+
+.face-confirm-only-shell {
+  padding: 0 !important;
+}
+
+.camera-only-card,
+.clean-confirm-camera.camera-only-card {
+  width: min(980px, calc(100vw - 40px)) !important;
+  height: min(72vh, 680px) !important;
+  min-height: 430px !important;
+  border-radius: 24px !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  overflow: hidden !important;
+  background: #020617 !important;
+  box-shadow: 0 28px 80px rgba(2, 6, 23, 0.42) !important;
+}
+
+.camera-only-card .face-camera-video {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: none !important;
+  object-fit: cover !important;
+}
+
+.face-camera-live-chip,
+.face-camera-corners,
+.face-camera-scanline,
+.face-camera-overlay {
+  display: none !important;
+}
+
+/* Admin shell: no outside scrollbar. Inner tables only. */
+.face-modal-admin {
+  width: min(1240px, calc(100vw - 34px)) !important;
+  height: min(90vh, 820px) !important;
+  max-height: min(90vh, 820px) !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 20px !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(15, 140, 255, 0.10), transparent 30%),
+    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(246,249,255,0.98)) !important;
+}
+
+.app-shell[data-theme="dark"] .face-modal-admin {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(15, 140, 255, 0.16), transparent 30%),
+    linear-gradient(180deg, rgba(17,24,39,0.98), rgba(15,23,42,0.98)) !important;
+}
+
+.face-modal-admin .face-modal-header {
+  flex: 0 0 auto;
+  margin-bottom: 10px !important;
+}
+
+.face-admin-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.face-admin-content .face-admin-tabs {
+  flex: 0 0 auto;
+  margin-bottom: 14px;
+}
+
+/* Cleaner tabs */
+.face-admin-tabs {
+  border-radius: 18px !important;
+  padding: 5px !important;
+  background: rgba(148, 163, 184, 0.13) !important;
+  border: 1px solid rgba(148, 163, 184, 0.18) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.55);
+}
+
+.face-admin-tabs button {
+  min-height: 42px !important;
+  font-size: 15px !important;
+  letter-spacing: 0.01em;
+}
+
+/* Logs: one clean card, table scroll only */
+.face-admin-content.admin-logs .face-admin-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 16px !important;
+  border-radius: 22px !important;
+  background: rgba(255,255,255,0.78) !important;
+  border: 1px solid rgba(148, 163, 184, 0.22) !important;
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.07);
+}
+
+.app-shell[data-theme="dark"] .face-admin-content.admin-logs .face-admin-panel {
+  background: rgba(30, 41, 59, 0.72) !important;
+}
+
+.face-filter-grid-logs {
+  flex: 0 0 auto;
+  margin-bottom: 14px !important;
+  grid-template-columns: 170px repeat(3, minmax(0, 1fr)) !important;
+}
+
+.face-filter-grid input,
+.face-form-grid input,
+.face-form-grid select {
+  height: 42px !important;
+  border-radius: 14px !important;
+}
+
+.logs-table-wrap {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: auto !important;
+  border-radius: 18px !important;
+  background: rgba(255,255,255,0.76);
+}
+
+.face-admin-table {
+  min-width: 0 !important;
+  width: 100% !important;
+  table-layout: fixed;
+}
+
+.face-admin-table th,
+.face-admin-table td {
+  padding: 12px 14px !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.face-admin-table th:first-child,
+.face-admin-table td:first-child {
+  width: 210px;
+}
+
+/* Remove bottom green loaded strip in Admin */
+.face-modal-admin > .face-status,
+.face-admin-content + .face-status {
+  display: none !important;
+}
+
+/* Register: no outside scroll, tighter better two-column layout */
+.face-admin-content.admin-register {
+  overflow: hidden;
+}
+
+.face-register-layout {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  display: grid !important;
+  grid-template-columns: 410px minmax(0, 1fr) !important;
+  gap: 16px !important;
+  align-items: stretch !important;
+}
+
+.face-register-pane,
+.face-register-list {
+  min-height: 0 !important;
+  overflow: hidden !important;
+  border-radius: 22px !important;
+  padding: 16px !important;
+  background: rgba(255,255,255,0.78) !important;
+  border: 1px solid rgba(148, 163, 184, 0.22) !important;
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.07);
+}
+
+.app-shell[data-theme="dark"] .face-register-pane,
+.app-shell[data-theme="dark"] .face-register-list {
+  background: rgba(30, 41, 59, 0.72) !important;
+}
+
+.face-register-pane {
+  display: flex;
+  flex-direction: column;
+}
+
+.face-register-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.face-register-pane-title,
+.face-admin-title {
+  font-size: 18px !important;
+  line-height: 1.1;
+  text-align: left !important;
+  margin: 0 0 12px !important;
+}
+
+.face-form-grid.register-grid {
+  flex: 0 0 auto;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 10px !important;
+  margin-bottom: 10px !important;
+}
+
+.face-form-grid.register-grid label:last-child {
+  grid-column: 1 / -1;
+}
+
+.register-camera {
+  flex: 1 1 auto;
+  min-height: 190px !important;
+  height: auto !important;
+  margin-top: 0 !important;
+  border-radius: 18px !important;
+}
+
+.face-modal-actions.compact-actions {
+  flex: 0 0 auto;
+  justify-content: flex-start !important;
+  margin-top: 10px !important;
+}
+
+.face-register-list .face-admin-title {
+  flex: 0 0 auto;
+}
+
+.register-table-wrap {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: auto !important;
+  border-radius: 18px !important;
+}
+
+.register-table-wrap .face-admin-table th,
+.register-table-wrap .face-admin-table td {
+  padding: 11px 12px !important;
+}
+
+.face-status-pill {
+  min-width: 86px !important;
+  padding: 6px 10px !important;
+}
+
+.face-table-action {
+  min-width: 92px !important;
+  padding: 9px 10px !important;
+}
+
+/* Keep scrollbars only where needed and make them clean */
+.face-modal-admin::-webkit-scrollbar,
+.face-modal-confirm-only::-webkit-scrollbar {
+  display: none !important;
+}
+
+.face-admin-table-wrap {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(37, 99, 235, 0.70) rgba(148, 163, 184, 0.12);
+}
+
+.face-admin-table-wrap::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.face-admin-table-wrap::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.13);
+}
+
+.face-admin-table-wrap::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: linear-gradient(180deg, #60a5fa, #2563eb);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+@media (max-width: 1100px) {
+  .face-modal-admin {
+    height: 92vh !important;
+  }
+
+  .face-register-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .face-register-pane {
+    max-height: 48%;
+  }
+
+  .face-filter-grid-logs {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .camera-only-card,
+  .clean-confirm-camera.camera-only-card {
+    width: calc(100vw - 22px) !important;
+    height: 64vh !important;
+    min-height: 340px !important;
+    border-radius: 20px !important;
+  }
+
+  .face-modal-admin {
+    width: calc(100vw - 18px) !important;
+    height: 92vh !important;
+    padding: 14px !important;
+  }
+
+  .face-filter-grid-logs,
+  .face-form-grid.register-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

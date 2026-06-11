@@ -4401,3 +4401,242 @@ button:hover {
     min-height: 0 !important;
   }
 }
+
+/* =========================================================
+   29 - SIZE + CENTERING CORRECTION
+   Keep modal compact; only make inner content fit.
+========================================================= */
+.face-modal-backdrop {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+}
+
+/* Confirmation: same compact size, centered, camera only */
+.face-modal-confirm-only {
+  width: min(960px, calc(100vw - 44px)) !important;
+  height: min(620px, calc(100vh - 44px)) !important;
+  max-width: 960px !important;
+  max-height: 620px !important;
+  margin: auto !important;
+  padding: 0 !important;
+  display: block !important;
+  overflow: visible !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  justify-self: center !important;
+  align-self: center !important;
+}
+
+.face-modal-confirm-only .face-modal-header {
+  position: absolute !important;
+  top: -18px !important;
+  right: -18px !important;
+  z-index: 10 !important;
+}
+
+.face-modal-confirm-only .face-modal-close {
+  width: 38px !important;
+  height: 38px !important;
+}
+
+.face-confirm-only-shell {
+  width: 100% !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 auto !important;
+}
+
+.camera-only-card,
+.clean-confirm-camera.camera-only-card {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin: 0 auto !important;
+  border-radius: 22px !important;
+  background: #020617 !important;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.34) !important;
+}
+
+.camera-only-card .face-camera-video,
+.clean-confirm-camera.camera-only-card .face-camera-video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+/* Admin: back to normal modal size, no giant popup */
+.face-modal-admin {
+  width: min(1180px, calc(100vw - 40px)) !important;
+  height: min(780px, calc(100vh - 40px)) !important;
+  max-width: 1180px !important;
+  max-height: 780px !important;
+  padding: 18px !important;
+  border-radius: 24px !important;
+  margin: auto !important;
+}
+
+.face-admin-content .face-admin-tabs {
+  width: calc(100% - 48px) !important;
+  height: 50px !important;
+  margin: 0 48px 14px 0 !important;
+}
+
+.face-admin-tabs button {
+  min-height: 40px !important;
+  font-size: 14px !important;
+}
+
+/* Register: keep modal size, make fields/table fit inside */
+.face-register-layout {
+  height: calc(100% - 64px) !important;
+  grid-template-columns: 390px minmax(0, 1fr) !important;
+  gap: 14px !important;
+}
+
+.face-register-pane,
+.face-register-list {
+  padding: 14px !important;
+  border-radius: 20px !important;
+}
+
+.face-register-pane {
+  grid-template-rows: auto auto minmax(170px, 1fr) auto auto !important;
+  gap: 8px !important;
+}
+
+.face-register-pane-title,
+.face-admin-title {
+  font-size: 18px !important;
+  margin: 0 0 8px !important;
+}
+
+.face-form-grid.register-grid {
+  grid-template-columns: 1fr 1fr !important;
+  gap: 8px 10px !important;
+}
+
+.face-form-grid.register-grid label {
+  gap: 5px !important;
+  font-size: 9px !important;
+  letter-spacing: 0.04em !important;
+}
+
+.face-form-grid.register-grid input,
+.face-form-grid.register-grid select {
+  height: 38px !important;
+  border-radius: 13px !important;
+  font-size: 12px !important;
+  padding: 0 10px !important;
+}
+
+.register-camera {
+  min-height: 165px !important;
+  max-height: 240px !important;
+  border-radius: 17px !important;
+}
+
+.face-modal-actions.compact-actions {
+  gap: 8px !important;
+  margin-top: 8px !important;
+}
+
+.compact-actions .face-primary-btn,
+.compact-actions .face-secondary-btn {
+  min-height: 34px !important;
+  padding: 0 12px !important;
+  font-size: 12px !important;
+}
+
+.register-table-wrap {
+  overflow: auto !important;
+}
+
+.register-table-wrap .face-admin-table {
+  width: 100% !important;
+  min-width: 0 !important;
+  table-layout: fixed !important;
+}
+
+.register-table-wrap .face-admin-table th,
+.register-table-wrap .face-admin-table td {
+  padding: 10px 8px !important;
+  font-size: 11px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.register-table-wrap .face-admin-table th:nth-child(1),
+.register-table-wrap .face-admin-table td:nth-child(1) { width: 17% !important; }
+.register-table-wrap .face-admin-table th:nth-child(2),
+.register-table-wrap .face-admin-table td:nth-child(2) { width: 15% !important; }
+.register-table-wrap .face-admin-table th:nth-child(3),
+.register-table-wrap .face-admin-table td:nth-child(3) { width: 12% !important; }
+.register-table-wrap .face-admin-table th:nth-child(4),
+.register-table-wrap .face-admin-table td:nth-child(4) { width: 11% !important; }
+.register-table-wrap .face-admin-table th:nth-child(5),
+.register-table-wrap .face-admin-table td:nth-child(5) { width: 10% !important; }
+.register-table-wrap .face-admin-table th:nth-child(6),
+.register-table-wrap .face-admin-table td:nth-child(6) { width: 15% !important; }
+.register-table-wrap .face-admin-table th:nth-child(7),
+.register-table-wrap .face-admin-table td:nth-child(7) { width: 20% !important; }
+
+.face-status-pill {
+  min-width: 64px !important;
+  max-width: 82px !important;
+  padding: 6px 8px !important;
+  font-size: 10px !important;
+}
+
+.face-table-action {
+  min-width: 0 !important;
+  width: 76px !important;
+  padding: 7px 6px !important;
+  font-size: 10px !important;
+}
+
+/* Logs: compact with inner table scroll only */
+.face-admin-content.admin-logs .face-admin-panel {
+  height: calc(100% - 64px) !important;
+  padding: 12px !important;
+}
+
+.face-filter-grid-logs {
+  grid-template-columns: 150px repeat(3, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+
+.logs-table-wrap {
+  height: 100% !important;
+}
+
+@media (max-width: 1100px) {
+  .face-modal-admin {
+    width: min(1040px, calc(100vw - 28px)) !important;
+  }
+
+  .face-register-layout {
+    grid-template-columns: 360px minmax(0, 1fr) !important;
+  }
+
+  .register-table-wrap .face-admin-table {
+    min-width: 680px !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .face-modal-confirm-only {
+    width: calc(100vw - 24px) !important;
+    height: min(560px, calc(100vh - 44px)) !important;
+  }
+
+  .face-register-layout {
+    grid-template-columns: 1fr !important;
+  }
+}

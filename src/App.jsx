@@ -1468,10 +1468,10 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
                             <td>{row.machine_name || row.machine || "-"}</td>
                             <td>{row.employee_id || "-"}</td>
                             <td>{row.role || "-"}</td>
-                            <td><span className={`face-status-pill ${row.is_active ? "active" : "inactive"}`}>{row.is_active ? "Registered" : "Inactive"}</span></td>
+                            <td><span className={`face-status-pill ${row.is_active ? "active" : "inactive"}`}>{row.is_active ? "Active" : "Inactive"}</span></td>
                             <td>
                               <button className="face-table-action" onClick={() => handleUnregister(row)} disabled={loading || !row.is_active}>
-                                {row.is_active ? "Unregister" : "Inactive"}
+                                {row.is_active ? "Remove" : "Inactive"}
                               </button>
                             </td>
                           </tr>

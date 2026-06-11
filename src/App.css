@@ -4136,3 +4136,268 @@ button:hover {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* =========================================================
+   28 - ADMIN/REGISTER FIT FIXES
+========================================================= */
+.face-modal-backdrop {
+  overflow: hidden !important;
+  padding: 12px !important;
+}
+
+.face-modal-admin {
+  width: min(1500px, calc(100vw - 28px)) !important;
+  height: min(860px, calc(100vh - 28px)) !important;
+  max-height: calc(100vh - 28px) !important;
+  overflow: hidden !important;
+  padding: 18px 22px 20px !important;
+  border-radius: 26px !important;
+}
+
+.face-modal-admin .face-modal-header {
+  position: absolute !important;
+  top: 14px !important;
+  right: 16px !important;
+  margin: 0 !important;
+  z-index: 5 !important;
+}
+
+.face-modal-admin .face-modal-header > div {
+  display: none !important;
+}
+
+.face-modal-admin .face-modal-close,
+.face-modal-admin-auth .face-modal-close,
+.face-modal-confirm-only .face-modal-close {
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: 14px !important;
+  background: rgba(255, 255, 255, 0.82) !important;
+  border: 1px solid rgba(148, 163, 184, 0.18) !important;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08) !important;
+}
+
+.face-admin-content {
+  height: 100% !important;
+  padding-top: 0 !important;
+  overflow: hidden !important;
+}
+
+.face-admin-content .face-admin-tabs {
+  width: calc(100% - 54px) !important;
+  height: 56px !important;
+  margin: 0 54px 16px 0 !important;
+  border-radius: 20px !important;
+}
+
+.face-admin-tabs button {
+  min-height: 46px !important;
+  border-radius: 16px !important;
+}
+
+/* Less boxy auth screen */
+.face-modal-admin-auth {
+  width: min(1120px, calc(100vw - 28px)) !important;
+  max-height: calc(100vh - 28px) !important;
+  overflow: hidden !important;
+  padding: 24px !important;
+  border-radius: 28px !important;
+}
+
+.face-admin-auth-card {
+  position: relative;
+  max-width: 820px !important;
+  overflow: hidden;
+  padding: 34px 36px !important;
+  border-radius: 28px !important;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.94), rgba(248,250,255,0.94)) !important;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.12) !important;
+}
+
+.face-admin-auth-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 8px;
+  background: linear-gradient(180deg, #0b4ea2, #0f8cff);
+}
+
+.face-admin-auth-title {
+  text-align: left !important;
+  font-size: 28px !important;
+}
+
+.face-admin-auth-subtitle {
+  text-align: left !important;
+}
+
+/* Logs fill without page scroll */
+.face-admin-content.admin-logs .face-admin-panel {
+  height: calc(100% - 72px) !important;
+  padding: 14px !important;
+}
+
+.logs-table-wrap {
+  height: 100% !important;
+  max-height: none !important;
+}
+
+/* Register page: more width for form + table, no outside scroll */
+.face-admin-content.admin-register {
+  height: 100% !important;
+}
+
+.face-register-layout {
+  height: calc(100% - 72px) !important;
+  grid-template-columns: 500px minmax(0, 1fr) !important;
+  gap: 18px !important;
+}
+
+.face-register-pane,
+.face-register-list {
+  height: 100% !important;
+  padding: 18px !important;
+  border-radius: 22px !important;
+}
+
+.face-register-pane {
+  display: grid !important;
+  grid-template-rows: auto auto minmax(210px, 1fr) auto auto !important;
+  gap: 10px !important;
+}
+
+.face-register-pane-title,
+.face-admin-title {
+  font-size: 20px !important;
+  margin-bottom: 4px !important;
+}
+
+.face-form-grid.register-grid {
+  grid-template-columns: 1fr 1fr !important;
+  gap: 10px 12px !important;
+  margin-bottom: 0 !important;
+}
+
+.face-form-grid.register-grid input,
+.face-form-grid.register-grid select {
+  width: 100% !important;
+  min-width: 0 !important;
+  font-size: 13px !important;
+  padding: 0 14px !important;
+}
+
+.face-form-grid.register-grid label {
+  min-width: 0 !important;
+}
+
+.register-camera {
+  min-height: 220px !important;
+  height: 100% !important;
+  max-height: 300px !important;
+}
+
+.face-register-list {
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  overflow: hidden !important;
+}
+
+.register-table-wrap {
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow: auto !important;
+}
+
+.register-table-wrap .face-admin-table {
+  table-layout: fixed !important;
+  min-width: 0 !important;
+  width: 100% !important;
+}
+
+.register-table-wrap .face-admin-table th,
+.register-table-wrap .face-admin-table td {
+  padding: 12px 10px !important;
+  font-size: 12px !important;
+}
+
+.register-table-wrap .face-admin-table th:nth-child(1),
+.register-table-wrap .face-admin-table td:nth-child(1) { width: 18%; }
+.register-table-wrap .face-admin-table th:nth-child(2),
+.register-table-wrap .face-admin-table td:nth-child(2) { width: 17%; }
+.register-table-wrap .face-admin-table th:nth-child(3),
+.register-table-wrap .face-admin-table td:nth-child(3) { width: 13%; }
+.register-table-wrap .face-admin-table th:nth-child(4),
+.register-table-wrap .face-admin-table td:nth-child(4) { width: 12%; }
+.register-table-wrap .face-admin-table th:nth-child(5),
+.register-table-wrap .face-admin-table td:nth-child(5) { width: 11%; }
+.register-table-wrap .face-admin-table th:nth-child(6),
+.register-table-wrap .face-admin-table td:nth-child(6) { width: 13%; }
+.register-table-wrap .face-admin-table th:nth-child(7),
+.register-table-wrap .face-admin-table td:nth-child(7) { width: 16%; }
+
+.face-status-pill {
+  min-width: 74px !important;
+  padding: 7px 10px !important;
+  font-size: 11px !important;
+}
+
+.face-table-action {
+  min-width: 74px !important;
+  width: 88px !important;
+  padding: 9px 8px !important;
+  font-size: 11px !important;
+}
+
+/* Camera confirmation = just the video */
+.face-modal-confirm-only {
+  width: min(1320px, calc(100vw - 28px)) !important;
+  height: min(780px, calc(100vh - 28px)) !important;
+  padding: 12px !important;
+  overflow: hidden !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.face-modal-confirm-only .face-modal-header {
+  position: absolute !important;
+  top: 18px !important;
+  right: 18px !important;
+  margin: 0 !important;
+  z-index: 10 !important;
+}
+
+.face-confirm-only-shell,
+.camera-only-card {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.camera-only-card {
+  min-height: 0 !important;
+  border-radius: 24px !important;
+  border: 1px solid rgba(148, 163, 184, 0.30) !important;
+  box-shadow: 0 22px 70px rgba(15, 23, 42, 0.34) !important;
+}
+
+@media (max-width: 1200px) {
+  .face-register-layout {
+    grid-template-columns: 440px minmax(0, 1fr) !important;
+  }
+
+  .register-table-wrap .face-admin-table {
+    min-width: 760px !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .face-register-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .face-register-pane,
+  .face-register-list {
+    min-height: 0 !important;
+  }
+}

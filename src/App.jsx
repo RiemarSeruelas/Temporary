@@ -239,6 +239,12 @@ const MACHINE_CONFIGS = {
   }, */
 };
 
+const SHIFT_OPTIONS = [
+  { value: "MORNING", label: "6 AM - 10 AM", fullLabel: "6 AM - 2 PM Shift" },
+  { value: "AFTERNOON", label: "2 PM - 6 PM", fullLabel: "2 PM - 10 PM Shift" },
+  { value: "NIGHT", label: "10 PM - 2 AM", fullLabel: "10 PM - 6 AM Shift" },
+];
+
 export default function App() {
   const [activeMachineId, setActiveMachineId] = useState("mespack");
   const [machineData, setMachineData] = useState(null);
@@ -309,27 +315,33 @@ const machineRows = useMemo(() => {
   return activeMachine.points.map((point) => {
     const liveGuardOnValue = payload?.[point.guardTag];
     const liveHealthyValue = payload?.[point.interlockTag];
+    const liveOpenCloseValue = payload?.[`${point.guardTag}_OpenClose`];
+    const liveLockStateValue = payload?.[`${point.interlockTag}_LockState`];
 
-    const guardOn =
+    const fallbackGuardOn =
       liveGuardOnValue === undefined
         ? !point.guardOpen
         : toBool(liveGuardOnValue);
 
-    const healthyOn =
+    const fallbackHealthyOn =
       liveHealthyValue === undefined
         ? point.interlockOk
         : toBool(liveHealthyValue);
 
+    const openClose =
+      normalizeOpenCloseState(liveOpenCloseValue) ||
+      (fallbackGuardOn ? "CLOSE" : "OPEN");
+
+    const lockState =
+      normalizeLockState(liveLockStateValue) ||
+      (fallbackHealthyOn ? "LOCK" : "UNLOCK");
+
     return {
       ...point,
-
-      // Convert Guard ON into guardOpen
-      // Guard ON true  = guardOpen false
-      // Guard ON false = guardOpen true
-      guardOpen: !guardOn,
-
-      // Healthy signal maps directly
-      interlockOk: healthyOn,
+      openClose,
+      lockState,
+      guardOpen: openClose === "OPEN",
+      interlockOk: lockState === "LOCK",
     };
   });
 }, [payload, activeMachine]);
@@ -372,8 +384,10 @@ const machineRows = useMemo(() => {
      07 - MACHINE STATE FLAGS
   ========================================================= */
 
-  const isRunning = status === "RUNNING";
+  const isRunning = status === "RUNNING" || status === "READY";
   const isStopped = status === "STOPPED";
+  const verificationRequired = machineData?.verificationRequired ?? payload?.verificationRequired;
+  const verificationLabel = machineData?.verificationLabel || payload?.verificationLabel || "Waiting for HighByte data";
 
   /* =========================================================
      08 - ZOOM CALCULATION
@@ -515,8 +529,8 @@ const machineRows = useMemo(() => {
             </select>
           </label>
           <SummaryStat value={attentionRows.length} label="ATTENTION" variant="red" />
+          <SummaryStat value={verificationRequired ? "REQ" : "SKIP"} label="VERIFY" variant={verificationRequired ? "amber" : "green"} />
           <SummaryStat value={zoneRows.length} label="ZONES" variant="green" />
-          <SummaryStat value={isStopped ? "STOP" : "-"} label="STOPPED" variant="red" />
           <SummaryStat value={status} label="STATE" variant="amber" />
         </div>
       </section>
@@ -774,16 +788,16 @@ const machineRows = useMemo(() => {
                 <DetailItem label="Point No." value={selectedPoint.id} />
                 <DetailItem label="Status" value={selectedPoint.state.label} />
                 <DetailItem
-                  label="Guard"
-                  value={selectedPoint.guardOpen ? "OPEN" : "CLOSED"}
+                  label="Open / Close"
+                  value={selectedPoint.openClose || (selectedPoint.guardOpen ? "OPEN" : "CLOSE")}
                 />
                 <DetailItem
-                  label="Interlock"
-                  value={selectedPoint.interlockOk ? "OK" : "FAULT"}
+                  label="Lock / Unlock"
+                  value={selectedPoint.lockState || (selectedPoint.interlockOk ? "LOCK" : "UNLOCK")}
                 />
-                <DetailItem label="Guard Tag" value={selectedPoint.guardTag} wide />
+                <DetailItem label="Open/Close Tag" value={selectedPoint.guardTag} wide />
                 <DetailItem
-                  label="Interlock Tag"
+                  label="Lock Tag"
                   value={selectedPoint.interlockTag}
                   wide
                 />
@@ -1056,13 +1070,16 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
   const [adminPassword, setAdminPassword] = useState("");
   const [adminLogs, setAdminLogs] = useState([]);
   const [adminPeople, setAdminPeople] = useState([]);
-  const [filters, setFilters] = useState({ date: "", name: "", machine: "", department: "" });
+  const [verificationSummary, setVerificationSummary] = useState([]);
+  const [machineState, setMachineState] = useState(null);
+  const [filters, setFilters] = useState({ date: "", name: "", machine: "", department: "", shift: "" });
   const [form, setForm] = useState({
     person_name: "",
     employee_id: "",
     department: "",
     role: "operator",
     machine: defaultMachineId || machines?.[0]?.id || "mespack",
+    shift_code: "MORNING",
   });
 
   const videoRef = useRef(null);
@@ -1078,8 +1095,9 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
     const deptOk = !filters.department || String(row.department || "").toLowerCase().includes(filters.department.toLowerCase());
     const machineText = `${row.machine || ""} ${row.machine_name || ""}`.toLowerCase();
     const machineOk = !filters.machine || machineText.includes(filters.machine.toLowerCase());
+    const shiftOk = !filters.shift || String(row.shift_code || "") === filters.shift;
     const dateOk = !filters.date || rowDate === filters.date;
-    return nameOk && deptOk && machineOk && dateOk;
+    return nameOk && deptOk && machineOk && shiftOk && dateOk;
   });
 
   const filteredPeople = adminPeople.filter((row) => {
@@ -1087,7 +1105,18 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
     const deptOk = !filters.department || String(row.department || "").toLowerCase().includes(filters.department.toLowerCase());
     const machineText = `${row.machine || ""} ${row.machine_name || ""}`.toLowerCase();
     const machineOk = !filters.machine || machineText.includes(filters.machine.toLowerCase());
-    return nameOk && deptOk && machineOk;
+    const shiftOk = !filters.shift || String(row.shift_code || "") === filters.shift;
+    return nameOk && deptOk && machineOk && shiftOk;
+  });
+
+  const filteredVerificationSummary = verificationSummary.filter((row) => {
+    const nameOk = !filters.name || String(row.person_name || "").toLowerCase().includes(filters.name.toLowerCase());
+    const deptOk = !filters.department || String(row.department || "").toLowerCase().includes(filters.department.toLowerCase());
+    const machineText = `${row.machine || ""} ${row.machine_name || ""}`.toLowerCase();
+    const machineOk = !filters.machine || machineText.includes(filters.machine.toLowerCase());
+    const shiftOk = !filters.shift || String(row.shift_code || "") === filters.shift;
+    const dateOk = !filters.date || String(row.shift_date || "").slice(0, 10) === filters.date;
+    return nameOk && deptOk && machineOk && shiftOk && dateOk;
   });
 
   useEffect(() => {
@@ -1196,6 +1225,10 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
       setError("Enter the department first.");
       return false;
     }
+    if (!form.shift_code) {
+      setError("Select the verification shift first.");
+      return false;
+    }
     return true;
   }
 
@@ -1203,6 +1236,8 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
     const data = await postJson("/api/machine-check/admin/logs", { password });
     setAdminLogs(data.logs || []);
     setAdminPeople(data.people || []);
+    setVerificationSummary(data.verificationSummary || []);
+    setMachineState(data.machineState || null);
     return data;
   }
 
@@ -1264,7 +1299,8 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
       });
       stopCamera();
       onClose();
-      onConfirmed?.(`Confirmed: ${data.log?.person_name || "Machine check saved"}`);
+      const verifyLabel = data.verification?.label || "Machine check saved";
+      onConfirmed?.(`${data.log?.person_name || "Confirmed"}: ${verifyLabel}`);
     } catch (err) {
       if (silent) {
         window.clearTimeout(confirmRetryRef.current);
@@ -1370,9 +1406,26 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
               <div className="face-admin-panel">
                 <div className="face-filter-grid face-filter-grid-logs">
                   <label>Date<input type="date" value={filters.date} onChange={(e) => setFilters((p) => ({ ...p, date: e.target.value }))} /></label>
+                  <label>Shift<select value={filters.shift} onChange={(e) => setFilters((p) => ({ ...p, shift: e.target.value }))}><option value="">All Shifts</option>{SHIFT_OPTIONS.map((shift) => <option key={shift.value} value={shift.value}>{shift.label}</option>)}</select></label>
                   <label>Name<input value={filters.name} onChange={(e) => setFilters((p) => ({ ...p, name: e.target.value }))} placeholder="Filter name" /></label>
                   <label>Machine<input value={filters.machine} onChange={(e) => setFilters((p) => ({ ...p, machine: e.target.value }))} placeholder="Filter machine" /></label>
                   <label>Department<input value={filters.department} onChange={(e) => setFilters((p) => ({ ...p, department: e.target.value }))} placeholder="Filter department" /></label>
+                </div>
+
+                <div className="verification-summary-card">
+                  <div className="verification-summary-head">
+                    <strong>Shift Verification</strong>
+                    <span>{machineState?.label || "Waiting for machine state"}</span>
+                  </div>
+                  <div className="verification-summary-list">
+                    {filteredVerificationSummary.length ? filteredVerificationSummary.map((row) => (
+                      <div className="verification-summary-row" key={`${row.person_id}-${row.shift_code}-${row.shift_date}`}>
+                        <span>{row.person_name}</span>
+                        <span>{getShiftLabel(row.shift_code)}</span>
+                        <span className={`verification-pill ${getVerificationPillClass(row.status)}`}>{formatStatusLabel(row.status)}</span>
+                      </div>
+                    )) : <div className="verification-empty">No registered active people for this filter.</div>}
+                  </div>
                 </div>
 
                 <div className="face-admin-table-wrap polished-table-wrap logs-table-wrap">
@@ -1383,6 +1436,8 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
                         <th>Name</th>
                         <th>Department</th>
                         <th>Machine</th>
+                        <th>Shift</th>
+                        <th>Status</th>
                         <th>Employee</th>
                         <th>Role</th>
                       </tr>
@@ -1394,6 +1449,8 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
                           <td>{row.person_name}</td>
                           <td>{row.department || "-"}</td>
                           <td>{row.machine_name || row.machine || "-"}</td>
+                          <td>{getShiftLabel(row.shift_code)}</td>
+                          <td><span className={`verification-pill ${getVerificationPillClass(row.confirmation_status)}`}>{formatStatusLabel(row.confirmation_status)}</span></td>
                           <td>{row.employee_id || "-"}</td>
                           <td>{row.role || "-"}</td>
                         </tr>
@@ -1414,6 +1471,7 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
                     <label>Department<input value={form.department} onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))} placeholder="e.g. Engineering" /></label>
                     <label>Role<select value={form.role} onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}><option value="operator">Operator</option><option value="technician">Technician</option><option value="engineer">Engineer</option><option value="admin">Admin</option></select></label>
                     <label>Machine<select value={form.machine} onChange={(e) => setForm((p) => ({ ...p, machine: e.target.value }))}>{machineOptions.map((machine) => <option key={machine.id} value={machine.id}>{machine.name}</option>)}</select></label>
+                    <label>Shift<select value={form.shift_code} onChange={(e) => setForm((p) => ({ ...p, shift_code: e.target.value }))}>{SHIFT_OPTIONS.map((shift) => <option key={shift.value} value={shift.value}>{shift.label}</option>)}</select></label>
                   </div>
 
                   <div className="face-camera-card register-camera">
@@ -1435,6 +1493,7 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
                       <span>Name: {lastRegister.operator?.person_name ?? form.person_name}</span>
                       <span>Department: {lastRegister.operator?.department ?? form.department}</span>
                       <span>Machine: {lastRegister.operator?.machine_name ?? selectedMachineName}</span>
+                      <span>Shift: {getShiftLabel(lastRegister.operator?.shift_code ?? form.shift_code)}</span>
                     </div>
                   )}
                 </div>
@@ -1448,6 +1507,7 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
                           <th>Name</th>
                           <th>Department</th>
                           <th>Machine</th>
+                          <th>Shift</th>
                           <th>Employee</th>
                           <th>Role</th>
                           <th>Status</th>
@@ -1460,6 +1520,7 @@ function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed 
                             <td>{row.person_name}</td>
                             <td>{row.department || "-"}</td>
                             <td>{row.machine_name || row.machine || "-"}</td>
+                            <td>{getShiftLabel(row.shift_code)}</td>
                             <td>{row.employee_id || "-"}</td>
                             <td>{row.role || "-"}</td>
                             <td><span className={`face-status-pill ${row.is_active ? "active" : "inactive"}`}>{row.is_active ? "Active" : "Inactive"}</span></td>
@@ -1521,30 +1582,29 @@ function DetailItem({ label, value, wide }) {
 ========================================================= */
 
 function getSafetyState(point) {
-  const healthyOn = point.interlockOk === true;
-  const guardOn = point.guardOpen === false;
+  const openClose = point.openClose || (point.guardOpen ? "OPEN" : "CLOSE");
+  const lockState = point.lockState || (point.interlockOk ? "LOCK" : "UNLOCK");
+  const isClosed = openClose === "CLOSE";
+  const isLocked = lockState === "LOCK";
 
-  if (healthyOn && guardOn) {
+  if (isClosed && isLocked) {
     return {
       label: "Ready",
       className: "safe",
     };
   }
 
-  // Any open guard should be yellow.
-  if (!guardOn) {
+  if (!isLocked) {
     return {
-      label: "Guard Open",
-      className: "warning",
+      label: isClosed ? "Unlocked" : "Open / Unlock",
+      className: "danger",
     };
   }
 
-  // Guard is closed, but interlock/healthy signal is not OK.
-  // This should be red.
-  if (!healthyOn && guardOn) {
+  if (!isClosed) {
     return {
-      label: "Interlock",
-      className: "danger",
+      label: "Open",
+      className: "warning",
     };
   }
 
@@ -1561,14 +1621,14 @@ function getZoneState(tags) {
 
   if (hasInterlock) {
     return {
-      label: "Interlock",
+      label: "Unlocked",
       className: "danger",
     };
   }
 
   if (hasGuardOpen) {
     return {
-      label: "Guard Open",
+      label: "Open",
       className: "warning",
     };
   }
@@ -1612,13 +1672,55 @@ function get3DStatusColor(className) {
 ========================================================= */
 
 function getStatusClass(status) {
-  if (status === "READY") return "running";
-  if (status === "DIAGNOSTIC") return "stopped";
-  if (status === "GUARD OPEN") return "stopped";
-  if (status === "RUNNING") return "running";
-  if (status === "STOPPED") return "stopped";
-
+  if (["READY", "RUNNING"].includes(status)) return "running";
+  if (["UNLOCKED", "OPEN", "DIAGNOSTIC", "GUARD OPEN", "STOPPED"].includes(status)) return "stopped";
   return "waiting";
+}
+
+function normalizeOpenCloseState(value) {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value === "boolean") return value ? "CLOSE" : "OPEN";
+  if (typeof value === "number") return value === 1 ? "CLOSE" : value === 0 ? "OPEN" : null;
+  const text = String(value).trim().toLowerCase().replace(/[\s_-]+/g, " ");
+  if (["close", "closed", "guard on", "door closed", "1", "true", "on", "safe", "ready"].includes(text)) return "CLOSE";
+  if (["open", "opened", "guard off", "door open", "0", "false", "off", "unsafe"].includes(text)) return "OPEN";
+  return null;
+}
+
+function normalizeLockState(value) {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value === "boolean") return value ? "LOCK" : "UNLOCK";
+  if (typeof value === "number") return value === 1 ? "LOCK" : value === 0 ? "UNLOCK" : null;
+  const text = String(value).trim().toLowerCase().replace(/[\s_-]+/g, " ");
+  if (["lock", "locked", "interlock", "interlock ok", "healthy", "ok", "1", "true", "on", "safe", "ready"].includes(text)) return "LOCK";
+  if (["unlock", "unlocked", "interlock fault", "fault", "diagnostic", "trip", "0", "false", "off"].includes(text)) return "UNLOCK";
+  return null;
+}
+
+function getShiftLabel(value) {
+  const shift = SHIFT_OPTIONS.find((item) => item.value === String(value || "").toUpperCase());
+  return shift?.label || "-";
+}
+
+function formatStatusLabel(value) {
+  if (!value) return "-";
+  const text = String(value).toUpperCase();
+  if (text === "NOT_REQUIRED") return "Not Required";
+  if (text === "NO_SHIFT") return "No Shift";
+  return text
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function getVerificationPillClass(value) {
+  const text = String(value || "").toUpperCase();
+  if (["VERIFIED", "CONFIRMED"].includes(text)) return "ok";
+  if (["NOT_REQUIRED", "UPCOMING"].includes(text)) return "skip";
+  if (["PENDING", "EARLY"].includes(text)) return "warn";
+  if (["MISSED", "LATE", "NO_SHIFT"].includes(text)) return "bad";
+  return "skip";
 }
 
 function toBool(value) {
@@ -1627,11 +1729,11 @@ function toBool(value) {
 
   const text = String(value).trim().toLowerCase();
 
-  if (["true", "yes", "on", "open", "running", "ok"].includes(text)) {
+  if (["true", "yes", "on", "close", "closed", "locked", "running", "ok"].includes(text)) {
     return true;
   }
 
-  if (["false", "no", "off", "closed", "stopped", "fault"].includes(text)) {
+  if (["false", "no", "off", "open", "opened", "unlock", "unlocked", "stopped", "fault"].includes(text)) {
     return false;
   }
 

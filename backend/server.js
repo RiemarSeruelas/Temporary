@@ -51,6 +51,32 @@ const POSTGRES_SCHEMA = process.env.POSTGRES_SCHEMA || "app";
 const PEOPLE_TABLE = process.env.POSTGRES_PEOPLE_TABLE || "face_people";
 const CONFIRMATIONS_TABLE = process.env.POSTGRES_CONFIRMATIONS_TABLE || "machine_check_confirmations";
 
+// Manila plant time. We use a fixed +08:00 offset because Asia/Manila has no DST.
+const MANILA_OFFSET_MINUTES = 8 * 60;
+const MACHINE_DATA_STALE_SECONDS = Number(process.env.MACHINE_DATA_STALE_SECONDS || 300);
+
+const SHIFT_WINDOWS = {
+  MORNING: {
+    label: "6 AM - 10 AM",
+    shiftLabel: "6 AM - 2 PM",
+    verifyStart: "06:00",
+    verifyEnd: "10:00",
+  },
+  AFTERNOON: {
+    label: "2 PM - 6 PM",
+    shiftLabel: "2 PM - 10 PM",
+    verifyStart: "14:00",
+    verifyEnd: "18:00",
+  },
+  NIGHT: {
+    label: "10 PM - 2 AM",
+    shiftLabel: "10 PM - 6 AM",
+    verifyStart: "22:00",
+    verifyEnd: "02:00",
+    crossesMidnight: true,
+  },
+};
+
 const pgPool = new Pool({
   host: process.env.POSTGRES_HOST || "localhost",
   port: Number(process.env.POSTGRES_PORT || 5432),
@@ -112,6 +138,313 @@ function unwrapSingleArray(value) {
   return value;
 }
 
+function firstDefined(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== "");
+}
+
+function normalizeTextState(value) {
+  if (value === undefined || value === null) return "";
+  return String(value).trim().toLowerCase().replace(/[\s_-]+/g, " ");
+}
+
+function normalizeOpenCloseState(value, fallbackFromBool = null) {
+  if (value === undefined || value === null || value === "") {
+    if (fallbackFromBool === true) return "CLOSE";
+    if (fallbackFromBool === false) return "OPEN";
+    return null;
+  }
+
+  if (typeof value === "boolean") return value ? "CLOSE" : "OPEN";
+  if (typeof value === "number") return value === 1 ? "CLOSE" : value === 0 ? "OPEN" : null;
+
+  const text = normalizeTextState(value);
+  if (["close", "closed", "guard on", "door closed", "safe", "ready", "healthy", "1", "true", "on"].includes(text)) return "CLOSE";
+  if (["open", "opened", "guard off", "door open", "unsafe", "0", "false", "off"].includes(text)) return "OPEN";
+
+  return null;
+}
+
+function normalizeLockState(value, fallbackFromBool = null) {
+  if (value === undefined || value === null || value === "") {
+    if (fallbackFromBool === true) return "LOCK";
+    if (fallbackFromBool === false) return "UNLOCK";
+    return null;
+  }
+
+  if (typeof value === "boolean") return value ? "LOCK" : "UNLOCK";
+  if (typeof value === "number") return value === 1 ? "LOCK" : value === 0 ? "UNLOCK" : null;
+
+  const text = normalizeTextState(value);
+  if (["lock", "locked", "interlock", "interlock ok", "healthy", "ok", "ready", "1", "true", "on"].includes(text)) return "LOCK";
+  if (["unlock", "unlocked", "interlock fault", "fault", "diagnostic", "trip", "0", "false", "off"].includes(text)) return "UNLOCK";
+
+  return null;
+}
+
+function parseMachineRunningFlag(sourceData) {
+  const raw = firstDefined(
+    sourceData.machineRunning,
+    sourceData.machine_running,
+    sourceData.isRunning,
+    sourceData.running,
+    sourceData.runState,
+    sourceData.run_state,
+    sourceData.machineStatus,
+    sourceData.machine_status,
+    sourceData.status,
+    sourceData.overallStatus
+  );
+
+  if (raw === undefined || raw === null || raw === "") return null;
+  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "number") return raw > 0;
+
+  const text = normalizeTextState(raw);
+  if (["run", "running", "active", "production", "online", "on", "1", "true"].includes(text)) return true;
+  if (["stop", "stopped", "idle", "off", "offline", "waiting", "ready", "0", "false"].includes(text)) return false;
+  return null;
+}
+
+function manilaParts(date = new Date()) {
+  const shifted = new Date(date.getTime() + MANILA_OFFSET_MINUTES * 60 * 1000);
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+    hour: shifted.getUTCHours(),
+    minute: shifted.getUTCMinutes(),
+    second: shifted.getUTCSeconds(),
+  };
+}
+
+function pad2(value) {
+  return String(value).padStart(2, "0");
+}
+
+function manilaDateKey(date = new Date()) {
+  const p = manilaParts(date);
+  return `${p.year}-${pad2(p.month)}-${pad2(p.day)}`;
+}
+
+function dateKeyToParts(dateKey) {
+  const [year, month, day] = String(dateKey).split("-").map(Number);
+  return { year, month, day };
+}
+
+function addDaysToDateKey(dateKey, days) {
+  const { year, month, day } = dateKeyToParts(dateKey);
+  const utc = new Date(Date.UTC(year, month - 1, day + days, 0, 0, 0));
+  return `${utc.getUTCFullYear()}-${pad2(utc.getUTCMonth() + 1)}-${pad2(utc.getUTCDate())}`;
+}
+
+function manilaLocalToUtc(dateKey, hhmm, dayOffset = 0) {
+  const { year, month, day } = dateKeyToParts(dateKey);
+  const [hour, minute] = String(hhmm).split(":").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + dayOffset, hour, minute, 0) - MANILA_OFFSET_MINUTES * 60 * 1000);
+}
+
+function normalizeShiftCode(value) {
+  const text = String(value || "").trim().toUpperCase();
+  if (["MORNING", "AM", "1", "06:00-10:00", "6AM-10AM", "6 AM - 10 AM"].includes(text)) return "MORNING";
+  if (["AFTERNOON", "PM", "2", "14:00-18:00", "2PM-6PM", "2 PM - 6 PM"].includes(text)) return "AFTERNOON";
+  if (["NIGHT", "NOC", "3", "22:00-02:00", "10PM-2AM", "10 PM - 2 AM"].includes(text)) return "NIGHT";
+  return "";
+}
+
+function getVerificationWindow(shiftCode, now = new Date()) {
+  const code = normalizeShiftCode(shiftCode);
+  const config = SHIFT_WINDOWS[code];
+  if (!config) return null;
+
+  const currentParts = manilaParts(now);
+  let shiftDate = manilaDateKey(now);
+
+  // Night shift belongs to the previous date between 00:00 and 05:59 Manila time.
+  if (code === "NIGHT" && currentParts.hour < 6) {
+    shiftDate = addDaysToDateKey(shiftDate, -1);
+  }
+
+  const windowStart = manilaLocalToUtc(shiftDate, config.verifyStart, 0);
+  const windowEnd = manilaLocalToUtc(shiftDate, config.verifyEnd, config.crossesMidnight ? 1 : 0);
+  const currentTime = now.getTime();
+
+  return {
+    shift_code: code,
+    shift_date: shiftDate,
+    shift_label: config.shiftLabel,
+    verification_label: config.label,
+    window_start: windowStart.toISOString(),
+    window_end: windowEnd.toISOString(),
+    has_started: currentTime >= windowStart.getTime(),
+    has_ended: currentTime > windowEnd.getTime(),
+    is_in_window: currentTime >= windowStart.getTime() && currentTime <= windowEnd.getTime(),
+  };
+}
+
+function isMachineDataFresh(machineData = latestMachineData, now = new Date()) {
+  if (!machineData?.lastUpdated) return false;
+  const last = new Date(machineData.lastUpdated);
+  if (Number.isNaN(last.getTime())) return false;
+  const ageSeconds = (now.getTime() - last.getTime()) / 1000;
+  return ageSeconds <= MACHINE_DATA_STALE_SECONDS;
+}
+
+function getMachineVerificationState(machineData = latestMachineData, now = new Date()) {
+  const data = machineData?.data || {};
+  const doors = Array.isArray(data.doors) ? data.doors : [];
+  const fresh = isMachineDataFresh(machineData, now);
+
+  if (!fresh) {
+    return {
+      required: false,
+      reason: "NO_DATA",
+      label: "Not Required - No HighByte Data",
+      staleSeconds: MACHINE_DATA_STALE_SECONDS,
+    };
+  }
+
+  const explicitRunning = data.machineRunning;
+  if (explicitRunning === true) {
+    return { required: true, reason: "RUNNING_SIGNAL", label: "Required - Machine Running" };
+  }
+
+  if (explicitRunning === false) {
+    return { required: false, reason: "NOT_RUNNING_SIGNAL", label: "Not Required - Machine Not Running" };
+  }
+
+  if (!doors.length) {
+    return { required: false, reason: "NO_POINTS", label: "Not Required - No Door Points" };
+  }
+
+  const hasOpenOrUnlocked = doors.some((door) => door.openClose === "OPEN" || door.lockState === "UNLOCK");
+  const allClosedAndLocked = doors.every((door) => door.openClose === "CLOSE" && door.lockState === "LOCK");
+
+  if (allClosedAndLocked && !hasOpenOrUnlocked) {
+    return { required: false, reason: "ALL_CLOSED_LOCKED", label: "Not Required - All Closed/Locked" };
+  }
+
+  return { required: true, reason: "ACTIVE_POINTS", label: "Required - Active/Open/Unlocked Points" };
+}
+
+function getConfirmationStatus({ operator, now = new Date(), machineState = getMachineVerificationState(latestMachineData, now) }) {
+  const window = getVerificationWindow(operator?.shift_code, now);
+
+  if (!window) {
+    return {
+      status: "NO_SHIFT",
+      label: "No Shift Assigned",
+      machine_required: machineState.required,
+      machine_reason: machineState.reason,
+      window: null,
+    };
+  }
+
+  if (!machineState.required) {
+    return {
+      status: "NOT_REQUIRED",
+      label: machineState.label,
+      machine_required: false,
+      machine_reason: machineState.reason,
+      window,
+    };
+  }
+
+  if (window.is_in_window) {
+    return {
+      status: "VERIFIED",
+      label: "Verified Within Window",
+      machine_required: true,
+      machine_reason: machineState.reason,
+      window,
+    };
+  }
+
+  if (!window.has_started) {
+    return {
+      status: "EARLY",
+      label: "Early - Window Not Started",
+      machine_required: true,
+      machine_reason: machineState.reason,
+      window,
+    };
+  }
+
+  return {
+    status: "LATE",
+    label: "Late - Window Ended",
+    machine_required: true,
+    machine_reason: machineState.reason,
+    window,
+  };
+}
+
+function buildVerificationSummary(peopleRows, logRows, now = new Date()) {
+  const machineState = getMachineVerificationState(latestMachineData, now);
+
+  return peopleRows
+    .filter((person) => person.is_active !== false)
+    .map((person) => {
+      const window = getVerificationWindow(person.shift_code, now);
+
+      if (!window) {
+        return {
+          person_id: person.id,
+          person_name: person.person_name,
+          department: person.department,
+          machine: person.machine,
+          machine_name: person.machine_name,
+          shift_code: person.shift_code || null,
+          status: "NO_SHIFT",
+          label: "No Shift Assigned",
+          machine_required: machineState.required,
+          machine_reason: machineState.reason,
+        };
+      }
+
+      const matchingLog = logRows.find((log) => {
+        return Number(log.person_id) === Number(person.id)
+          && String(log.shift_code || "") === String(window.shift_code)
+          && String(log.shift_date || "").slice(0, 10) === String(window.shift_date)
+          && ["confirmed", "verified", "VERIFIED"].includes(String(log.confirmation_status || ""));
+      });
+
+      let status = "PENDING";
+      let label = "Pending Check";
+
+      if (!machineState.required) {
+        status = "NOT_REQUIRED";
+        label = machineState.label;
+      } else if (matchingLog) {
+        status = "VERIFIED";
+        label = "Verified";
+      } else if (!window.has_started) {
+        status = "UPCOMING";
+        label = "Upcoming";
+      } else if (window.has_ended) {
+        status = "MISSED";
+        label = "Missed";
+      }
+
+      return {
+        person_id: person.id,
+        person_name: person.person_name,
+        department: person.department,
+        machine: person.machine,
+        machine_name: person.machine_name,
+        shift_code: window.shift_code,
+        shift_date: window.shift_date,
+        verification_label: window.verification_label,
+        window_start: window.window_start,
+        window_end: window.window_end,
+        status,
+        label,
+        machine_required: machineState.required,
+        machine_reason: machineState.reason,
+        confirmed_at: matchingLog?.created_at || null,
+      };
+    });
+}
+
 function normalizeDoors(doors) {
   if (!doors) return [];
 
@@ -151,53 +484,116 @@ function normalizeHighBytePayload(rawPayload) {
     };
   }
 
-  const doors = normalizeDoors(sourceData.doors);
-
+  const inputDoors = normalizeDoors(sourceData.doors);
+  const normalizedDoors = [];
   const flatTags = {};
 
   let openDoorCount = 0;
-  let diagnosticCount = 0;
+  let unlockCount = 0;
 
-  for (const door of doors) {
-    const doorNoRaw = String(Number(door.doorNo));
+  for (const door of inputDoors) {
+    const doorNoRaw = String(Number(door.doorNo || door.id || door.no || normalizedDoors.length + 1));
+    const guardTag = door.doorTagName || door.guardTag || door.openCloseTagName || `SFI_Door${doorNoRaw}`;
+    const diagnosticTag = door.diagnosticTagName || door.lockTagName || door.interlockTag || `I_Door${doorNoRaw}Diagnostic`;
 
-    const guardTag = door.doorTagName || `SFI_Door${doorNoRaw}`;
-    const diagnosticTag = door.diagnosticTagName || `I_Door${doorNoRaw}Diagnostic`;
+    const rawOpenClose = firstDefined(
+      door.openClose,
+      door.open_close,
+      door.openCloseState,
+      door.openCloseValue,
+      door.doorState,
+      door.doorStatus,
+      door.guardState,
+      door.guardStatus,
+      door.doorValue
+    );
 
-    const doorValue = door.doorValue === true;
-    const diagnosticFault = door.diagnosticValue === false;
-    const interlockOk = !diagnosticFault;
+    const rawLock = firstDefined(
+      door.lockState,
+      door.lockStatus,
+      door.lockValue,
+      door.lock,
+      door.interlockState,
+      door.interlockStatus,
+      door.healthyState,
+      door.diagnosticState,
+      door.diagnosticValue
+    );
 
-    flatTags[guardTag] = doorValue;
-    flatTags[diagnosticTag] = interlockOk;
+    // Backward compatibility:
+    // old doorValue true = closed, false = open
+    // old diagnosticValue true = healthy/locked, false = fault/unlocked
+    const openClose = normalizeOpenCloseState(rawOpenClose, typeof door.doorValue === "boolean" ? door.doorValue : null) || "CLOSE";
+    const lockState = normalizeLockState(rawLock, typeof door.diagnosticValue === "boolean" ? door.diagnosticValue : null) || "LOCK";
 
-    if (doorValue !== true) openDoorCount++;
-    if (diagnosticFault) diagnosticCount++;
+    const normalizedDoor = {
+      ...door,
+      doorNo: Number(doorNoRaw),
+      doorTagName: guardTag,
+      diagnosticTagName: diagnosticTag,
+      openClose,
+      lockState,
+      doorValue: openClose === "CLOSE",
+      diagnosticValue: lockState === "LOCK",
+    };
+
+    normalizedDoors.push(normalizedDoor);
+
+    // Keep the old boolean tags so the existing frontend map still works.
+    flatTags[guardTag] = openClose === "CLOSE";
+    flatTags[diagnosticTag] = lockState === "LOCK";
+
+    // Add direct text tags for the new UI wording.
+    flatTags[`${guardTag}_OpenClose`] = openClose;
+    flatTags[`${diagnosticTag}_LockState`] = lockState;
+
+    if (openClose === "OPEN") openDoorCount++;
+    if (lockState === "UNLOCK") unlockCount++;
   }
 
-  let overallStatus = sourceData.overallStatus || "READY";
+  const machineRunning = parseMachineRunningFlag(sourceData);
+  let overallStatus = sourceData.overallStatus || sourceData.status || "READY";
 
-  if (diagnosticCount > 0) {
-    overallStatus = "DIAGNOSTIC";
+  if (unlockCount > 0) {
+    overallStatus = "UNLOCKED";
   } else if (openDoorCount > 0) {
-    overallStatus = "GUARD OPEN";
+    overallStatus = "OPEN";
+  } else if (machineRunning === false) {
+    overallStatus = "STOPPED";
+  } else if (machineRunning === true) {
+    overallStatus = "RUNNING";
   } else {
     overallStatus = "READY";
   }
 
+  const temporaryData = {
+    _name: sourceData._name,
+    _model: sourceData._model,
+    _timestamp: sourceData._timestamp,
+    area: sourceData.area || "Dressings",
+    machine: sourceData.machine || "Mespack Filler",
+    doors: normalizedDoors,
+    overallStatus,
+    openDoorCount,
+    unlockCount,
+    diagnosticCount: unlockCount,
+    machineRunning,
+    ...flatTags,
+  };
+
+  const temporaryMachineData = {
+    lastUpdated: new Date().toISOString(),
+    data: temporaryData,
+  };
+  const machineState = getMachineVerificationState(temporaryMachineData, new Date());
+
   return {
     status: overallStatus,
     data: {
-      _name: sourceData._name,
-      _model: sourceData._model,
-      _timestamp: sourceData._timestamp,
-      area: sourceData.area || "Dressings",
-      machine: sourceData.machine || "Mespack Filler",
-      doors,
-      overallStatus,
-      openDoorCount,
-      diagnosticCount,
-      ...flatTags,
+      ...temporaryData,
+      verificationRequired: machineState.required,
+      verificationReason: machineState.reason,
+      verificationLabel: machineState.label,
     },
   };
 }
@@ -316,7 +712,7 @@ function searchPayload(image) {
 }
 
 
-async function upsertOperatorFace({ person_name, employee_id, department, role, machine, machine_name, candidate }) {
+async function upsertOperatorFace({ person_name, employee_id, department, role, machine, machine_name, shift_code, candidate }) {
   const faceApiId = candidate?.face_api_id ?? null;
   const faceImgName = candidate?.face_img_name ?? null;
 
@@ -333,6 +729,7 @@ async function upsertOperatorFace({ person_name, employee_id, department, role, 
         role,
         machine,
         machine_name,
+        shift_code,
         face_api_id,
         face_api_object_id,
         face_img_name,
@@ -341,7 +738,7 @@ async function upsertOperatorFace({ person_name, employee_id, department, role, 
         embedding_hash,
         is_active
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, TRUE)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, TRUE)
       RETURNING *
     `,
     [
@@ -351,6 +748,7 @@ async function upsertOperatorFace({ person_name, employee_id, department, role, 
       role || "operator",
       machine || null,
       machine_name || machine || null,
+      normalizeShiftCode(shift_code),
       faceApiId,
       candidate?.face_api_object_id || null,
       faceImgName,
@@ -387,7 +785,8 @@ async function findOperatorByCandidate(candidate) {
   return found.rows[0] || null;
 }
 
-async function insertConfirmationLog({ operator, machine, machine_name, candidate }) {
+async function insertConfirmationLog({ operator, machine, machine_name, candidate, verification }) {
+  const window = verification?.window || null;
   const saved = await pgPool.query(
     `
       INSERT INTO ${confirmationsTable} (
@@ -398,6 +797,11 @@ async function insertConfirmationLog({ operator, machine, machine_name, candidat
         role,
         machine,
         machine_name,
+        shift_code,
+        shift_date,
+        verification_window_start,
+        verification_window_end,
+        machine_required,
         face_api_id,
         face_api_object_id,
         face_img_name,
@@ -409,7 +813,7 @@ async function insertConfirmationLog({ operator, machine, machine_name, candidat
         embedding_hash,
         confirmation_status
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'confirmed')
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::date, $10::timestamp, $11::timestamp, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
       RETURNING *
     `,
     [
@@ -420,6 +824,11 @@ async function insertConfirmationLog({ operator, machine, machine_name, candidat
       operator.role || "operator",
       machine || operator.machine || null,
       machine_name || operator.machine_name || machine || operator.machine || null,
+      verification?.window?.shift_code || normalizeShiftCode(operator.shift_code) || null,
+      verification?.window?.shift_date || null,
+      window?.window_start ? new Date(window.window_start) : null,
+      window?.window_end ? new Date(window.window_end) : null,
+      verification?.machine_required === true,
       candidate.face_api_id,
       candidate.face_api_object_id,
       candidate.face_img_name,
@@ -429,6 +838,7 @@ async function insertConfirmationLog({ operator, machine, machine_name, candidat
       candidate.app_namespace || null,
       candidate.face_hash || null,
       candidate.embedding_hash || null,
+      String(verification?.status || "confirmed").toLowerCase(),
     ]
   );
 
@@ -448,6 +858,7 @@ async function ensureTables() {
       role TEXT DEFAULT 'operator',
       machine TEXT,
       machine_name TEXT,
+      shift_code TEXT,
       face_api_id INTEGER,
       face_api_object_id TEXT,
       face_img_name TEXT,
@@ -469,6 +880,11 @@ async function ensureTables() {
       role TEXT,
       machine TEXT NOT NULL,
       machine_name TEXT,
+      shift_code TEXT,
+      shift_date DATE,
+      verification_window_start TIMESTAMP,
+      verification_window_end TIMESTAMP,
+      machine_required BOOLEAN DEFAULT TRUE,
       face_api_id INTEGER,
       face_api_object_id TEXT,
       face_img_name TEXT,
@@ -486,7 +902,7 @@ async function ensureTables() {
   // Safe migrations for old test tables.
   const peopleColumns = [
     ["employee_id", "TEXT"], ["department", "TEXT"], ["role", "TEXT DEFAULT 'operator'"],
-    ["machine", "TEXT"], ["machine_name", "TEXT"], ["face_api_id", "INTEGER"],
+    ["machine", "TEXT"], ["machine_name", "TEXT"], ["shift_code", "TEXT"], ["face_api_id", "INTEGER"],
     ["face_api_object_id", "TEXT"], ["face_img_name", "TEXT"], ["face_app_namespace", "TEXT"],
     ["face_hash", "TEXT"], ["embedding_hash", "TEXT"], ["is_active", "BOOLEAN DEFAULT TRUE"],
     ["created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"]
@@ -498,7 +914,9 @@ async function ensureTables() {
   const confirmationColumns = [
     ["person_id", "INTEGER"], ["person_name", "TEXT"], ["employee_id", "TEXT"],
     ["department", "TEXT"], ["role", "TEXT"], ["machine", "TEXT"],
-    ["machine_name", "TEXT"], ["face_api_id", "INTEGER"], ["face_api_object_id", "TEXT"],
+    ["machine_name", "TEXT"], ["shift_code", "TEXT"], ["shift_date", "DATE"],
+    ["verification_window_start", "TIMESTAMP"], ["verification_window_end", "TIMESTAMP"],
+    ["machine_required", "BOOLEAN DEFAULT TRUE"], ["face_api_id", "INTEGER"], ["face_api_object_id", "TEXT"],
     ["face_img_name", "TEXT"], ["face_distance", "DOUBLE PRECISION"], ["face_threshold", "DOUBLE PRECISION"],
     ["face_confidence", "DOUBLE PRECISION"], ["face_app_namespace", "TEXT"],
     ["face_hash", "TEXT"], ["embedding_hash", "TEXT"],
@@ -608,12 +1026,28 @@ app.get("/health", (req, res) => {
   });
 });
 
+function currentMachineResponse() {
+  const machineState = getMachineVerificationState(latestMachineData, new Date());
+  return {
+    ...latestMachineData,
+    verificationRequired: machineState.required,
+    verificationReason: machineState.reason,
+    verificationLabel: machineState.label,
+    data: {
+      ...(latestMachineData.data || {}),
+      verificationRequired: machineState.required,
+      verificationReason: machineState.reason,
+      verificationLabel: machineState.label,
+    },
+  };
+}
+
 app.get("/data", (req, res) => {
-  res.json(latestMachineData);
+  res.json(currentMachineResponse());
 });
 
 app.get("/api/data", (req, res) => {
-  res.json(latestMachineData);
+  res.json(currentMachineResponse());
 });
 
 app.get("/raw", (req, res) => {
@@ -632,10 +1066,11 @@ app.get("/data-machine2", (req, res) => {
 app.post("/api/face/register", async (req, res) => {
   try {
     const { person_name, employee_id, department, role, machine, machine_name } = req.body;
+    const shift_code = normalizeShiftCode(req.body.shift_code || req.body.shift);
     const image = req.body.image || req.body.img;
 
-    if (!person_name || !department || !machine || !image) {
-      return res.status(400).json({ error: "person_name, department, machine, and image/img are required." });
+    if (!person_name || !department || !machine || !shift_code || !image) {
+      return res.status(400).json({ error: "person_name, department, machine, shift_code, and image/img are required." });
     }
 
     const registerResponse = await faceApiPost("/register", facePayload(image, {
@@ -647,6 +1082,8 @@ app.post("/api/face/register", async (req, res) => {
       role: role || "operator",
       machine,
       machine_name: machine_name || machine,
+      shift_code,
+      shift_label: SHIFT_WINDOWS[shift_code]?.label || shift_code,
       source_app: "Mespack Machine Dashboard",
       app_namespace: APP_NAMESPACE,
       is_active: true,
@@ -670,6 +1107,7 @@ app.post("/api/face/register", async (req, res) => {
       role: role || "operator",
       machine,
       machine_name: machine_name || machine,
+      shift_code,
       candidate,
     });
 
@@ -713,14 +1151,17 @@ app.post("/api/machine-check/confirm", async (req, res) => {
       });
     }
 
+    const verification = getConfirmationStatus({ operator, now: new Date() });
+
     const log = await insertConfirmationLog({
       operator,
       machine,
       machine_name: machine_name || machine,
       candidate,
+      verification,
     });
 
-    res.json({ ok: true, log, operator, candidate, searchResponse });
+    res.json({ ok: true, log, operator, candidate, verification, searchResponse });
   } catch (err) {
     logError("❌ Machine check confirmation failed", err);
     res.status(500).json({ error: err.message });
@@ -753,7 +1194,17 @@ app.post("/api/machine-check/admin/logs", async (req, res) => {
       `
     );
 
-    res.json({ ok: true, logs: logs.rows, people: people.rows });
+    const verificationSummary = buildVerificationSummary(people.rows, logs.rows, new Date());
+    const machineState = getMachineVerificationState(latestMachineData, new Date());
+
+    res.json({
+      ok: true,
+      logs: logs.rows,
+      people: people.rows,
+      verificationSummary,
+      machineState,
+      shiftWindows: SHIFT_WINDOWS,
+    });
   } catch (err) {
     logError("❌ Admin logs failed", err);
     res.status(500).json({ error: err.message });
@@ -812,7 +1263,7 @@ app.post("/api/face/unregister", async (req, res) => {
 app.get("/api/face/health", async (req, res) => {
   try {
     await pgPool.query("SELECT 1");
-    res.json({ ok: true, postgres: true, faceApi: FACE_API_BASE_URL, appNamespace: APP_NAMESPACE, strictNamespace: APP_NAMESPACE_STRICT });
+    res.json({ ok: true, postgres: true, faceApi: FACE_API_BASE_URL, appNamespace: APP_NAMESPACE, strictNamespace: APP_NAMESPACE_STRICT, shiftWindows: SHIFT_WINDOWS, staleSeconds: MACHINE_DATA_STALE_SECONDS });
   } catch (err) {
     res.status(500).json({ ok: false, postgres: false, error: err.message });
   }

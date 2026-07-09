@@ -4869,3 +4869,163 @@ button:hover {
   max-height: none !important;
   object-fit: cover !important;
 }
+
+/* =========================================================
+   30 - SHIFT VERIFICATION UPDATES
+========================================================= */
+.face-filter-grid select,
+.face-form-grid select {
+  height: 42px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--text);
+  padding: 0 12px;
+  outline: none;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.verification-summary-card {
+  flex: 0 0 auto;
+  margin-bottom: 12px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  overflow: hidden;
+}
+
+.verification-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.verification-summary-head strong {
+  font-size: 13px;
+  font-weight: 950;
+  color: var(--text);
+}
+
+.verification-summary-head span {
+  font-size: 10px;
+  font-weight: 900;
+  color: var(--muted);
+  text-align: right;
+}
+
+.verification-summary-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 118px;
+  overflow: auto;
+  padding: 10px;
+}
+
+.verification-summary-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px 112px;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 7px 9px;
+  border-radius: 13px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.verification-summary-row span:first-child {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 950;
+}
+
+.verification-empty {
+  grid-column: 1 / -1;
+  padding: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.verification-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 86px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.verification-pill.ok {
+  color: var(--green-dark);
+  background: rgba(34, 197, 94, 0.13);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.verification-pill.skip {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.11);
+  border: 1px solid rgba(37, 99, 235, 0.22);
+}
+
+.verification-pill.warn {
+  color: var(--yellow-dark);
+  background: rgba(250, 204, 21, 0.16);
+  border: 1px solid rgba(250, 204, 21, 0.30);
+}
+
+.verification-pill.bad {
+  color: var(--red-dark);
+  background: rgba(239, 68, 68, 0.13);
+  border: 1px solid rgba(239, 68, 68, 0.28);
+}
+
+.face-filter-grid-logs {
+  grid-template-columns: 140px 150px repeat(3, minmax(0, 1fr)) !important;
+}
+
+.logs-table-wrap .face-admin-table {
+  min-width: 980px !important;
+}
+
+.register-table-wrap .face-admin-table {
+  min-width: 880px !important;
+}
+
+@media (max-width: 1100px) {
+  .verification-summary-list {
+    grid-template-columns: 1fr;
+    max-height: 150px;
+  }
+
+  .face-filter-grid-logs {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .verification-summary-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .verification-summary-row {
+    grid-template-columns: 1fr;
+  }
+
+  .face-filter-grid-logs {
+    grid-template-columns: 1fr !important;
+  }
+}

@@ -1,10 +1,14 @@
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import machineImage from "./assets/machine.png";
-import zoneMainRealistic from "./assets/zone.png";
-import { Canvas } from "@react-three/fiber";
-import { Billboard, Edges, OrbitControls, useGLTF } from "@react-three/drei";
-import * as THREE from "three";
+import { AdminHome, ConfirmationModal, OperatorAdminPage } from "./OperatorExperience";
+
+const Machine3DView = lazy(() => import("./Machine3DView"));
+
+console.log(
+  "%cMade by Riemar R. Seruelas Jr - Data Digital Intern",
+  "color: #087cff; font-weight: 800; font-size: 12px;",
+);
 
 /* =========================================================
    01 - MACHINE POINTS / TAG CONFIG
@@ -79,7 +83,6 @@ const MACHINE_ZONES = [
     labelX: "18%",
     labelY: "73%",
     zoomScale: 2.45,
-    detailImage: zoneMainRealistic,
     tagIds: [1, 2, 3, 39, 38, 37, 36, 35, 34],
   }, 
   {
@@ -90,7 +93,6 @@ const MACHINE_ZONES = [
     labelX: "44%",
     labelY: "63%",
     zoomScale: 2.1,
-    detailImage: zoneMainRealistic,
     tagIds: [4, 5, 6, 7, 8, 9, 33, 32, 31, 30, 29, 28],
   },
   {
@@ -101,7 +103,6 @@ const MACHINE_ZONES = [
     labelX: "70%",
     labelY: "55%",
     zoomScale: 2,
-    detailImage: zoneMainRealistic,
     tagIds: [10, 11, 12, 13, 27, 26, 25, 24],
   },
    {
@@ -112,7 +113,6 @@ const MACHINE_ZONES = [
     labelX: "87%",
     labelY: "49%",
     zoomScale: 2.15,
-    detailImage: zoneMainRealistic,
     tagIds: [14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
   }, 
 ];
@@ -215,7 +215,7 @@ const MACHINE_CONFIGS = {
   mespack: {
     id: "mespack",
     name: "Mespack",
-    title: "Mespack Command Center",
+    title: "Mespack",
     subtitle: "Real-time guard and interlock status",
     apiUrl: "/api/data",
     image: machineImage,
@@ -239,25 +239,1266 @@ const MACHINE_CONFIGS = {
   }, */
 };
 
-const SHIFT_OPTIONS = [
-  { value: "MORNING", label: "6 AM - 10 AM", fullLabel: "6 AM - 2 PM Shift" },
-  { value: "AFTERNOON", label: "2 PM - 6 PM", fullLabel: "2 PM - 10 PM Shift" },
-  { value: "NIGHT", label: "10 PM - 2 AM", fullLabel: "10 PM - 6 AM Shift" },
+const DEFAULT_MACHINE_RECORD = {
+  id: "mespack",
+  name: "Mespack",
+  api_url: "/api/data",
+  mqtt_topic: "",
+  template_id: "mespack",
+  is_active: true,
+};
+
+const FIXED_MACHINE_CANVAS_ASPECT = 2.1;
+
+const DEFAULT_POINT_VALUE_RULES = {
+  primary: [
+    { value: "1", label: "Closed", severity: "safe", color: "#22c55e" },
+    { value: "0", label: "Open", severity: "warning", color: "#f59e0b" },
+  ],
+  secondary: [
+    { value: "1", label: "Locked", severity: "safe", color: "#22c55e" },
+    { value: "0", label: "Unlocked", severity: "danger", color: "#ef4444" },
+  ],
+  fallback: { label: "Unknown", severity: "warning", color: "#f59e0b" },
+};
+
+const VALUE_SEVERITIES = [
+  { value: "safe", label: "Good" },
+  { value: "warning", label: "Warning" },
+  { value: "danger", label: "Critical" },
+  { value: "neutral", label: "Information" },
 ];
 
+function cloneValueRules(valueRules) {
+  const source = valueRules && typeof valueRules === "object" ? valueRules : DEFAULT_POINT_VALUE_RULES;
+  return {
+    primary: Array.isArray(source.primary) ? source.primary.map((rule) => ({ ...rule })) : [],
+    secondary: Array.isArray(source.secondary) ? source.secondary.map((rule) => ({ ...rule })) : [],
+    fallback: {
+      ...DEFAULT_POINT_VALUE_RULES.fallback,
+      ...(source.fallback && typeof source.fallback === "object" ? source.fallback : {}),
+    },
+  };
+}
+
+function polygonToSvgPoints(points) {
+  return (Array.isArray(points) ? points : [])
+    .map((point) => Array.isArray(point) ? `${point[0]},${point[1]}` : `${point.x},${point.y}`)
+    .join(" ");
+}
+
+function machinePointFromDatabase(point) {
+  return {
+    id: Number(point.point_id),
+    name: point.name,
+    area: point.area || "Machine",
+    guardOpen: false,
+    interlockOk: true,
+    guardTag: point.source_key_primary,
+    interlockTag: point.source_key_secondary || "",
+    statusMode: point.status_mode || "door_interlock",
+    safeConfig: point.safe_config || { primary: "CLOSE", secondary: "LOCK" },
+    valueRules: cloneValueRules(point.value_rules),
+  };
+}
+
+function machineZoneFromDatabase(segment) {
+  return {
+    id: segment.id,
+    name: segment.name,
+    area: segment.area || segment.name,
+    points: polygonToSvgPoints(segment.polygon_points),
+    polygonPoints: segment.polygon_points,
+    boundingBox: segment.bounding_box,
+    labelX: `${Number(segment.label_x ?? 50)}%`,
+    labelY: `${Number(segment.label_y ?? 50)}%`,
+    zoomScale: Number(segment.zoom_scale || 2),
+    tagIds: (segment.point_ids || []).map(Number),
+  };
+}
+
 export default function App() {
+  const [accessRole, setAccessRole] = useState("temporary");
+  const [adminAccessOpen, setAdminAccessOpen] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [activePage, setActivePage] = useState("dashboard");
+  const [machineCatalog, setMachineCatalog] = useState([DEFAULT_MACHINE_RECORD]);
+  const [machinesLoading, setMachinesLoading] = useState(true);
+  const [theme, setTheme] = useState(() => localStorage.getItem("mespack-theme") || "dark");
+  const [machineEditorOpen, setMachineEditorOpen] = useState(false);
+  const [machineEditorSaving, setMachineEditorSaving] = useState(false);
+  const machineConfigurationActionsRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem("mespack-theme", theme);
+  }, [theme]);
+
+  async function loadMachines() {
+    try {
+      const response = await fetch("/api/machines");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to load machines.");
+      const nextMachines = data.machines?.length ? data.machines : [DEFAULT_MACHINE_RECORD];
+      setMachineCatalog(nextMachines);
+      return nextMachines;
+    } catch {
+      setMachineCatalog([DEFAULT_MACHINE_RECORD]);
+      return [DEFAULT_MACHINE_RECORD];
+    } finally {
+      setMachinesLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadMachines();
+  }, []);
+
+  async function enterAsAdmin(event) {
+    event.preventDefault();
+    setAuthLoading(true);
+    setAuthError("");
+
+    try {
+      const response = await fetch("/api/auth/admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: adminPassword }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Admin access failed.");
+
+      setAdminPassword((current) => current.trim());
+      setAccessRole("admin");
+      setActivePage("admin");
+      setAdminAccessOpen(false);
+      setShowAdminPassword(false);
+    } catch (error) {
+      setAuthError(error.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  function signOut() {
+    setAccessRole("temporary");
+    setActivePage("dashboard");
+    setAdminPassword("");
+    setAuthError("");
+    setAdminAccessOpen(false);
+    setShowAdminPassword(false);
+    setMachineEditorOpen(false);
+  }
+
+  function navigate(page) {
+    if (page !== "machines") setMachineEditorOpen(false);
+    setActivePage(page);
+  }
+
+  function closeAdminGate() {
+    setAdminAccessOpen(false);
+    setShowAdminPassword(false);
+  }
+
+  const isAdminWorkspace = accessRole === "admin" && ["admin", "machines", "operators"].includes(activePage);
+  const adminWorkspaceTitle = activePage === "machines"
+    ? "Machine Set Up"
+    : activePage === "operators" ? "Operator" : "Administration";
+
+  return (
+    <div className={`control-shell ${isAdminWorkspace ? "setup-mode" : "dashboard-mode"}`}>
+      {adminAccessOpen && (
+        <div className="admin-gate-backdrop" data-theme={theme} onClick={closeAdminGate}>
+          <form className="admin-gate" onSubmit={enterAsAdmin} onClick={(event) => event.stopPropagation()}>
+            <div className="admin-gate-heading">
+              <div><span>Administration</span><h2>Open machine setup</h2></div>
+              <button type="button" onClick={closeAdminGate} aria-label="Close">×</button>
+            </div>
+            <label htmlFor="dashboard-admin-password">Password</label>
+            <div className="admin-password-field">
+              <input
+                id="dashboard-admin-password"
+                type={showAdminPassword ? "text" : "password"}
+                value={adminPassword}
+                onChange={(event) => setAdminPassword(event.target.value)}
+                placeholder="Enter password"
+                autoFocus
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                className={showAdminPassword ? "is-visible" : ""}
+                onClick={() => setShowAdminPassword((current) => !current)}
+                aria-label={showAdminPassword ? "Hide password" : "Show password"}
+                aria-pressed={showAdminPassword}
+              >
+                {showAdminPassword ? (
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 10.7a2 2 0 0 0 2.7 2.7M9.9 4.2A10.7 10.7 0 0 1 12 4c5.2 0 8.5 5 8.5 5a14.8 14.8 0 0 1-2.4 2.8M6.6 6.6A15 15 0 0 0 3.5 9s3.3 5 8.5 5c1 0 1.8-.2 2.6-.4" /></svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12s3.3-5 8.5-5 8.5 5 8.5 5-3.3 5-8.5 5-8.5-5-8.5-5Z" /><circle cx="12" cy="12" r="2.25" /></svg>
+                )}
+              </button>
+            </div>
+            {authError && <div className="admin-gate-error">{authError}</div>}
+            <div className="admin-gate-actions">
+              <button type="button" onClick={closeAdminGate}>Cancel</button>
+              <button type="submit" disabled={authLoading || !adminPassword}>{authLoading ? "Checking…" : "Continue"}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {isAdminWorkspace ? (
+        <section className="admin-workspace" data-theme={theme}>
+          <header className="admin-workspace-bar">
+            <button
+              onClick={() => {
+                if (activePage === "machines" && machineEditorOpen) machineConfigurationActionsRef.current?.showMachineGallery();
+                else if (activePage === "admin") navigate("dashboard");
+                else navigate("admin");
+              }}
+            >
+              {activePage === "machines" && machineEditorOpen
+                ? "← All machines"
+                : activePage === "admin" ? "← Back to machine" : "← Administration"}
+            </button>
+            <div><span>Administration</span><strong>{adminWorkspaceTitle}</strong></div>
+            <div className="admin-workspace-actions">
+              <button
+                className="admin-theme-button"
+                onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}
+                aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+              >
+                <span aria-hidden="true">{theme === "dark" ? "☀" : "☾"}</span>
+                {theme === "dark" ? "Light" : "Dark"}
+              </button>
+              {activePage === "machines" && machineEditorOpen && (
+                <button
+                  className="admin-save-button"
+                  onClick={() => machineConfigurationActionsRef.current?.saveConfiguration()}
+                  disabled={machineEditorSaving || machinesLoading}
+                >
+                  {machineEditorSaving ? "Saving…" : "Save configuration"}
+                </button>
+              )}
+              <button onClick={signOut}>Exit admin</button>
+            </div>
+          </header>
+          <main className="admin-workspace-content">
+            {activePage === "admin" && (
+              <AdminHome
+                onMachineSetup={() => navigate("machines")}
+                onOperators={() => navigate("operators")}
+              />
+            )}
+            {activePage === "machines" && (
+              <MachineConfigurationPage
+                machines={machineCatalog}
+                password={adminPassword}
+                reload={loadMachines}
+                actionsRef={machineConfigurationActionsRef}
+                onEditorOpenChange={setMachineEditorOpen}
+                onSavingChange={setMachineEditorSaving}
+              />
+            )}
+            {activePage === "operators" && (
+              <OperatorAdminPage machines={machineCatalog} password={adminPassword} />
+            )}
+          </main>
+        </section>
+      ) : (
+        <LegacyDashboardApp
+          machineCatalog={machineCatalog}
+          accessRole={accessRole}
+          theme={theme}
+          setTheme={setTheme}
+          onOpenAdmin={() => {
+            setShowAdminPassword(false);
+            setAdminAccessOpen(true);
+            setAuthError("");
+          }}
+          onOpenMachineSetup={() => navigate("admin")}
+        />
+      )}
+    </div>
+  );
+}
+
+function newSource(machineId = "") {
+  return {
+    source_system: "HighByte",
+    transport: "MQTT",
+    source_endpoint: "",
+    source_topic: "",
+    source_path: "",
+    destination_type: "Dashboard API",
+    destination_key: machineId ? `/api/machines/${machineId}/data` : "",
+    payload_root: "data",
+    is_active: true,
+  };
+}
+
+function editorDraftFromMachine(machine) {
+  return {
+    id: machine.id,
+    name: machine.name || "",
+    description: machine.description || "",
+    is_active: machine.is_active !== false,
+    config_revision: Number(machine.config_revision || 1),
+    data_source: { ...newSource(machine.id), ...(machine.data_source || {}) },
+    imagePreview: machine.image?.url || machineImage,
+    image_base64: "",
+    image_mime_type: machine.image?.mime_type || "image/png",
+    image_width: machine.image?.original_width || null,
+    image_height: machine.image?.original_height || null,
+    segments: (machine.segments || []).map((segment) => ({
+      ...segment,
+      polygon_points: Array.isArray(segment.polygon_points) ? segment.polygon_points : [],
+      point_ids: (segment.point_ids || []).map(Number),
+    })),
+    points: (machine.points || []).map((point) => ({
+      ...point,
+      value_rules: cloneValueRules(point.value_rules),
+    })),
+  };
+}
+
+function emptySegmentDraft() {
+  return { id: "", name: "", area: "", polygon_points: [], point_ids_text: "", zoom_scale: 2 };
+}
+
+function segmentIdFromName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function pointIdsFromText(value) {
+  return [...new Set(String(value || "")
+    .split(/[,\s]+/)
+    .map(Number)
+    .filter(Number.isInteger))];
+}
+
+function availableFieldLabel(fieldKey) {
+  const parts = String(fieldKey || "").split(".").filter(Boolean);
+  return parts[parts.length - 1] || "Data point";
+}
+
+function payloadValueAtPath(payload, pathValue) {
+  if (!payload || !pathValue) return undefined;
+  if (Object.prototype.hasOwnProperty.call(payload, pathValue)) return payload[pathValue];
+  return String(pathValue)
+    .split(".")
+    .filter(Boolean)
+    .reduce((current, part) => current?.[part], payload);
+}
+
+function canonicalIncomingValue(value) {
+  if (value === undefined) return "__missing__";
+  if (value === null) return "null";
+  if (typeof value === "boolean") return value ? "1" : "0";
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : String(value).toLowerCase();
+  const normalized = String(value).trim().toLowerCase();
+  if (["true", "on", "yes"].includes(normalized)) return "1";
+  if (["false", "off", "no"].includes(normalized)) return "0";
+  return normalized;
+}
+
+function interpretIncomingValue(rawValue, channelRules, fallback) {
+  const canonicalValue = canonicalIncomingValue(rawValue);
+  const matchedRule = (Array.isArray(channelRules) ? channelRules : []).find((rule) => (
+    canonicalIncomingValue(rule.value) === canonicalValue
+  ));
+  const resolved = matchedRule || fallback || DEFAULT_POINT_VALUE_RULES.fallback;
+  return {
+    rawValue,
+    rawLabel: rawValue === undefined ? "No data" : String(rawValue),
+    label: String(resolved.label || (rawValue === undefined ? "No data" : rawValue)),
+    className: ["safe", "warning", "danger", "neutral"].includes(resolved.severity)
+      ? resolved.severity
+      : "neutral",
+    color: resolved.color || "#64748b",
+    matched: Boolean(matchedRule),
+  };
+}
+
+function pointInterpretation(point, payload) {
+  if (!point.valueRules) return null;
+  const rules = cloneValueRules(point.valueRules);
+  const states = [
+    interpretIncomingValue(payloadValueAtPath(payload, point.guardTag), rules.primary, rules.fallback),
+  ];
+  if (point.interlockTag) {
+    states.push(interpretIncomingValue(payloadValueAtPath(payload, point.interlockTag), rules.secondary, rules.fallback));
+  }
+  const priority = { danger: 3, warning: 2, neutral: 1, safe: 0 };
+  const overall = states.slice().sort((first, second) => (
+    (priority[second.className] ?? 1) - (priority[first.className] ?? 1)
+  ))[0];
+  return { states, overall };
+}
+
+function useHorizontalDragScroll() {
+  const ref = useRef(null);
+  const gesture = useRef({ active: false, startX: 0, startScrollLeft: 0, dragged: false });
+
+  function finishDrag(event) {
+    const node = ref.current;
+    if (!gesture.current.active) return;
+    gesture.current.active = false;
+    node?.classList.remove("is-dragging");
+    if (node?.hasPointerCapture?.(event.pointerId)) node.releasePointerCapture(event.pointerId);
+    window.setTimeout(() => { gesture.current.dragged = false; }, 0);
+  }
+
+  return {
+    ref,
+    className: "drag-scroll",
+    onPointerDown: (event) => {
+      if (event.pointerType === "touch" || event.button !== 0) return;
+      const node = ref.current;
+      if (!node || node.scrollWidth <= node.clientWidth) return;
+      gesture.current = {
+        active: true,
+        startX: event.clientX,
+        startScrollLeft: node.scrollLeft,
+        dragged: false,
+      };
+    },
+    onPointerMove: (event) => {
+      if (!gesture.current.active) return;
+      const node = ref.current;
+      const deltaX = event.clientX - gesture.current.startX;
+      if (!gesture.current.dragged && Math.abs(deltaX) < 5) return;
+      if (!gesture.current.dragged) {
+        gesture.current.dragged = true;
+        node?.setPointerCapture?.(event.pointerId);
+      }
+      node?.classList.add("is-dragging");
+      if (node) node.scrollLeft = gesture.current.startScrollLeft - deltaX;
+      event.preventDefault();
+    },
+    onPointerUp: finishDrag,
+    onPointerCancel: finishDrag,
+    onClickCapture: (event) => {
+      if (!gesture.current.dragged) return;
+      event.preventDefault();
+      event.stopPropagation();
+      gesture.current.dragged = false;
+    },
+  };
+}
+
+function MachineConfigurationPage({
+  machines,
+  password,
+  reload,
+  actionsRef,
+  onEditorOpenChange,
+  onSavingChange,
+}) {
+  const [selectedMachineId, setSelectedMachineId] = useState(machines[0]?.id || "mespack");
+  const [draft, setDraft] = useState(() => editorDraftFromMachine(machines[0] || DEFAULT_MACHINE_RECORD));
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [addMachineOpen, setAddMachineOpen] = useState(false);
+  const [segmentDraft, setSegmentDraft] = useState(emptySegmentDraft);
+  const [segmentDirty, setSegmentDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [newMachine, setNewMachine] = useState({ name: "", source_endpoint: "", source_topic: "" });
+  const [availableFields, setAvailableFields] = useState([]);
+  const [rulesPointId, setRulesPointId] = useState(null);
+  const [galleryIndex, setGalleryIndex] = useState(0);
+  const [gallerySwipeOffset, setGallerySwipeOffset] = useState(0);
+  const [gallerySwipeActive, setGallerySwipeActive] = useState(false);
+  const gallerySwipeGesture = useRef({ active: false, startX: 0, dragged: false, ignoreClick: false, offset: 0 });
+  const mappingDrag = useHorizontalDragScroll();
+  const galleryItems = useMemo(() => [
+    ...machines.map((machine) => ({ ...machine, isAddMore: false })),
+    { id: "__add_more__", name: "Add more", isAddMore: true },
+  ], [machines]);
+
+  useEffect(() => {
+    setGalleryIndex((current) => Math.min(current, Math.max(0, galleryItems.length - 1)));
+  }, [galleryItems.length]);
+
+  useEffect(() => {
+    onEditorOpenChange?.(editorOpen);
+  }, [editorOpen, onEditorOpenChange]);
+
+  useEffect(() => {
+    onSavingChange?.(saving);
+  }, [saving, onSavingChange]);
+
+  useEffect(() => {
+    if (rulesPointId === null) return undefined;
+    function closeRulesOnEscape(event) {
+      if (event.key === "Escape") setRulesPointId(null);
+    }
+    window.addEventListener("keydown", closeRulesOnEscape);
+    return () => window.removeEventListener("keydown", closeRulesOnEscape);
+  }, [rulesPointId]);
+
+  useEffect(() => {
+    const selected = machines.find((machine) => machine.id === selectedMachineId);
+    if (!selected) return;
+    setDraft(editorDraftFromMachine(selected));
+    setSegmentDraft(emptySegmentDraft());
+    setSegmentDirty(false);
+    setRulesPointId(null);
+  }, [machines, selectedMachineId]);
+
+  useEffect(() => {
+    if (!editorOpen || !selectedMachineId) return undefined;
+    let alive = true;
+    fetch(`/api/machines/${encodeURIComponent(selectedMachineId)}/available-data`)
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to read available HighByte data.");
+        if (!alive) return;
+        setAvailableFields(data.fields || []);
+      })
+      .catch(() => {
+        if (!alive) return;
+        const configured = (draft.points || []).flatMap((point) => [point.source_key_primary, point.source_key_secondary])
+          .filter(Boolean)
+          .map((key) => ({ key, type: "configured", sample: null, configured: true }));
+        setAvailableFields(configured);
+      });
+
+    return () => { alive = false; };
+  }, [editorOpen, selectedMachineId]);
+
+  function selectMachine(machine) {
+    setSelectedMachineId(machine.id);
+    setEditorOpen(true);
+    setAddMachineOpen(false);
+    setMessage("");
+    setError("");
+  }
+
+  function showMachineGallery() {
+    setEditorOpen(false);
+    setAddMachineOpen(false);
+    setMessage("");
+    setError("");
+  }
+
+  function moveGalleryTo(index) {
+    setGalleryIndex(Math.max(0, Math.min(galleryItems.length - 1, index)));
+  }
+
+  function openGalleryItem(item) {
+    if (!item) return;
+    if (item.isAddMore) {
+      setAddMachineOpen(true);
+      return;
+    }
+    selectMachine(item);
+  }
+
+  function startGallerySwipe(event) {
+    if (galleryItems.length < 2 || (event.pointerType === "mouse" && event.button !== 0)) return;
+    gallerySwipeGesture.current = {
+      active: true,
+      startX: event.clientX,
+      dragged: false,
+      ignoreClick: false,
+      offset: 0,
+    };
+    setGallerySwipeActive(true);
+  }
+
+  function moveGallerySwipe(event) {
+    if (!gallerySwipeGesture.current.active) return;
+    const distance = event.clientX - gallerySwipeGesture.current.startX;
+    if (!gallerySwipeGesture.current.dragged && Math.abs(distance) < 7) return;
+    gallerySwipeGesture.current.dragged = true;
+    gallerySwipeGesture.current.ignoreClick = true;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    const nextOffset = Math.max(-130, Math.min(130, distance));
+    gallerySwipeGesture.current.offset = nextOffset;
+    setGallerySwipeOffset(nextOffset);
+    event.preventDefault();
+  }
+
+  function finishGallerySwipe(event) {
+    if (!gallerySwipeGesture.current.active) return;
+    const finalOffset = Number(gallerySwipeGesture.current.offset || 0);
+    const shouldSwitch = gallerySwipeGesture.current.dragged && Math.abs(finalOffset) >= 58;
+    const direction = finalOffset < 0 ? 1 : -1;
+    gallerySwipeGesture.current.active = false;
+    setGallerySwipeActive(false);
+    setGallerySwipeOffset(0);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (shouldSwitch) moveGalleryTo(galleryIndex + direction);
+    window.setTimeout(() => {
+      gallerySwipeGesture.current.ignoreClick = false;
+      gallerySwipeGesture.current.dragged = false;
+    }, 0);
+  }
+
+  function updateDraft(field, value) {
+    setDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateSource(field, value) {
+    setDraft((current) => ({
+      ...current,
+      data_source: { ...current.data_source, [field]: value },
+    }));
+  }
+
+  function chooseSegment(segment) {
+    setSegmentDraft({
+      ...segment,
+      polygon_points: (segment.polygon_points || []).map((point) => [...point]),
+      point_ids_text: (segment.point_ids || []).join(", "),
+    });
+    setSegmentDirty(false);
+  }
+
+  function startNewSegment() {
+    setSegmentDraft(emptySegmentDraft());
+    setSegmentDirty(false);
+  }
+
+  function addPolygonPoint(event) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(100, ((event.clientX - bounds.left) / bounds.width) * 100));
+    const y = Math.max(0, Math.min(100, ((event.clientY - bounds.top) / bounds.height) * 100));
+    setSegmentDraft((current) => ({
+      ...current,
+      polygon_points: [...current.polygon_points, [Number(x.toFixed(3)), Number(y.toFixed(3))]],
+    }));
+    setSegmentDirty(true);
+  }
+
+  function commitSegment(segments = draft.segments, currentSegment = segmentDraft) {
+    const id = segmentIdFromName(currentSegment.id || currentSegment.name);
+    const name = String(currentSegment.name || "").trim();
+    const polygonPoints = currentSegment.polygon_points || [];
+    if (!id || !name || polygonPoints.length < 3) {
+      throw new Error("A segment needs a name and at least three clicks on the image.");
+    }
+    const pointIds = pointIdsFromText(currentSegment.point_ids_text);
+    const savedSegment = {
+      ...currentSegment,
+      id,
+      name,
+      area: String(currentSegment.area || name).trim(),
+      polygon_points: polygonPoints,
+      point_ids: pointIds,
+      zoom_scale: Number(currentSegment.zoom_scale || 2),
+      is_active: true,
+    };
+    const nextSegments = segments.some((segment) => segment.id === id)
+      ? segments.map((segment) => segment.id === id ? savedSegment : segment)
+      : [...segments, savedSegment];
+    return { savedSegment, nextSegments, pointIds };
+  }
+
+  function saveSegmentToDraft() {
+    setError("");
+    try {
+      const { savedSegment, nextSegments, pointIds } = commitSegment();
+      setDraft((current) => ({
+        ...current,
+        segments: nextSegments,
+        points: current.points.map((point) => ({
+          ...point,
+          segment_id: pointIds.includes(Number(point.point_id))
+            ? savedSegment.id
+            : point.segment_id === savedSegment.id ? null : point.segment_id,
+        })),
+      }));
+      setSegmentDraft({ ...savedSegment, point_ids_text: pointIds.join(", ") });
+      setSegmentDirty(false);
+      setMessage(`${savedSegment.name} is ready to save.`);
+    } catch (segmentError) {
+      setError(segmentError.message);
+    }
+  }
+
+  function deleteSegment() {
+    if (!segmentDraft.id) return;
+    setDraft((current) => ({
+      ...current,
+      segments: current.segments.filter((segment) => segment.id !== segmentDraft.id),
+      points: current.points.map((point) => point.segment_id === segmentDraft.id
+        ? { ...point, segment_id: null }
+        : point),
+    }));
+    setSegmentDraft(emptySegmentDraft());
+    setSegmentDirty(false);
+    setMessage("Segment removed from the draft. Save configuration to apply it.");
+  }
+
+  function updatePoint(index, field, value) {
+    setDraft((current) => ({
+      ...current,
+      points: current.points.map((point, pointIndex) => pointIndex === index
+        ? { ...point, [field]: field === "point_id" ? Number(value) : value }
+        : point),
+    }));
+  }
+
+  function addPointMapping(sourceKey = "") {
+    const nextId = Math.max(0, ...draft.points.map((point) => Number(point.point_id) || 0)) + 1;
+    setDraft((current) => ({
+      ...current,
+      points: [...current.points, {
+        point_id: nextId,
+        name: sourceKey ? availableFieldLabel(sourceKey) : `Point ${nextId}`,
+        area: "Machine",
+        segment_id: current.segments[0]?.id || null,
+        source_key_primary: sourceKey,
+        source_key_secondary: "",
+        status_mode: "door_interlock",
+        safe_config: { primary: "CLOSE", secondary: "LOCK" },
+        value_rules: cloneValueRules(DEFAULT_POINT_VALUE_RULES),
+        is_active: true,
+      }],
+    }));
+  }
+
+  function updateValueRule(pointIndex, channel, ruleIndex, field, value) {
+    setDraft((current) => ({
+      ...current,
+      points: current.points.map((point, index) => {
+        if (index !== pointIndex) return point;
+        const rules = cloneValueRules(point.value_rules);
+        rules[channel] = rules[channel].map((rule, indexInChannel) => indexInChannel === ruleIndex
+          ? { ...rule, [field]: value }
+          : rule);
+        return { ...point, value_rules: rules };
+      }),
+    }));
+  }
+
+  function addValueRule(pointIndex, channel) {
+    setDraft((current) => ({
+      ...current,
+      points: current.points.map((point, index) => {
+        if (index !== pointIndex) return point;
+        const rules = cloneValueRules(point.value_rules);
+        rules[channel] = [
+          ...rules[channel],
+          { value: "", label: "", severity: "safe", color: "#22c55e" },
+        ];
+        return { ...point, value_rules: rules };
+      }),
+    }));
+  }
+
+  function removeValueRule(pointIndex, channel, ruleIndex) {
+    setDraft((current) => ({
+      ...current,
+      points: current.points.map((point, index) => {
+        if (index !== pointIndex) return point;
+        const rules = cloneValueRules(point.value_rules);
+        rules[channel] = rules[channel].filter((_, indexInChannel) => indexInChannel !== ruleIndex);
+        return { ...point, value_rules: rules };
+      }),
+    }));
+  }
+
+  function updateFallbackRule(pointIndex, field, value) {
+    setDraft((current) => ({
+      ...current,
+      points: current.points.map((point, index) => {
+        if (index !== pointIndex) return point;
+        const rules = cloneValueRules(point.value_rules);
+        rules.fallback = { ...rules.fallback, [field]: value };
+        return { ...point, value_rules: rules };
+      }),
+    }));
+  }
+
+  function removePointMapping(index) {
+    setDraft((current) => ({
+      ...current,
+      points: current.points.filter((_, pointIndex) => pointIndex !== index),
+    }));
+  }
+
+  function handleImageFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setError("");
+    if (!/^image\/(png|jpeg|webp)$/i.test(file.type)) {
+      setError("Use a PNG, JPEG, or WebP machine image.");
+      return;
+    }
+    if (file.size > 12 * 1024 * 1024) {
+      setError("Machine image must be 12 MB or smaller.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        setDraft((current) => ({
+          ...current,
+          imagePreview: reader.result,
+          image_base64: reader.result,
+          image_mime_type: file.type,
+          image_width: image.naturalWidth,
+          image_height: image.naturalHeight,
+        }));
+      };
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function saveConfiguration() {
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      let segments = draft.segments;
+      let points = draft.points;
+      if (segmentDirty && (segmentDraft.name || segmentDraft.polygon_points.length)) {
+        const committed = commitSegment(segments, segmentDraft);
+        segments = committed.nextSegments;
+        points = points.map((point) => ({
+          ...point,
+          segment_id: committed.pointIds.includes(Number(point.point_id))
+            ? committed.savedSegment.id
+            : point.segment_id === committed.savedSegment.id ? null : point.segment_id,
+        }));
+      }
+
+      const response = await fetch(`/api/machines/${encodeURIComponent(draft.id)}/configuration`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password,
+          name: draft.name,
+          description: draft.description,
+          is_active: draft.is_active,
+          config_revision: draft.config_revision,
+          data_source: draft.data_source,
+          image_base64: draft.image_base64 || undefined,
+          image_mime_type: draft.image_mime_type,
+          image_width: draft.image_width,
+          image_height: draft.image_height,
+          segments,
+          points,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to save machine configuration.");
+      setMessage(`${data.machine.name} configuration saved to PostgreSQL.`);
+      setSegmentDirty(false);
+      await reload();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function addMachine(event) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    setMessage("");
+    const machineId = segmentIdFromName(newMachine.name);
+    try {
+      const response = await fetch("/api/machines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password,
+          name: newMachine.name,
+          id: machineId,
+          data_source: {
+            ...newSource(machineId),
+            source_endpoint: newMachine.source_endpoint,
+            source_topic: newMachine.source_topic,
+          },
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to add machine.");
+      setNewMachine({ name: "", source_endpoint: "", source_topic: "" });
+      setMessage(`${data.machine.name} added. Upload its image and map its segments next.`);
+      await reload();
+      setSelectedMachineId(data.machine.id);
+      setAddMachineOpen(false);
+      setEditorOpen(true);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const detectedFieldKeys = [...new Set(availableFields.map((field) => field.key).filter(Boolean))];
+  const activeRulesPointIndex = draft.points.findIndex((point) => Number(point.point_id) === Number(rulesPointId));
+  const activeRulesPoint = activeRulesPointIndex >= 0 ? draft.points[activeRulesPointIndex] : null;
+  const activeGalleryItem = galleryItems[galleryIndex] || galleryItems[0];
+  const previousGalleryItem = galleryIndex > 0 ? galleryItems[galleryIndex - 1] : null;
+  const nextGalleryItem = galleryIndex < galleryItems.length - 1 ? galleryItems[galleryIndex + 1] : null;
+
+  if (actionsRef) {
+    actionsRef.current = { showMachineGallery, saveConfiguration };
+  }
+
+  if (!editorOpen) {
+    return (
+      <div className="configurator-gallery">
+        <header className="configurator-gallery-heading">
+          <div>
+            <span>Machine directory</span>
+            <h1>Select a machine to configure</h1>
+          </div>
+        </header>
+
+        {message && <div className="configurator-notice success gallery-notice">{message}</div>}
+        {error && <div className="configurator-notice error gallery-notice">{error}</div>}
+
+        <div className="configurator-card-stage">
+          <div
+            className={`configurator-machine-swipe ${gallerySwipeActive ? "is-swiping" : ""}`}
+            aria-label="Machine setup selector. Swipe or drag to browse."
+            style={{ "--gallery-swipe-offset": `${gallerySwipeOffset}px` }}
+            onPointerDown={startGallerySwipe}
+            onPointerMove={moveGallerySwipe}
+            onPointerUp={finishGallerySwipe}
+            onPointerCancel={finishGallerySwipe}
+            onClickCapture={(event) => {
+              if (!gallerySwipeGesture.current.ignoreClick) return;
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+          >
+            <button
+              type="button"
+              className="configurator-swipe-preview previous"
+              onClick={() => moveGalleryTo(galleryIndex - 1)}
+              disabled={!previousGalleryItem}
+              aria-label="Previous machine"
+            >
+              <span className="configurator-swipe-direction">← Previous</span>
+              <span className="configurator-swipe-preview-content floating-media">
+                {previousGalleryItem && !previousGalleryItem.isAddMore && (
+                  <img src={previousGalleryItem.image?.url || machineImage} alt="" />
+                )}
+                {previousGalleryItem?.isAddMore && <i aria-hidden="true">+</i>}
+                <strong>{previousGalleryItem?.name || "Start of list"}</strong>
+              </span>
+            </button>
+
+            <button
+              key={activeGalleryItem?.id}
+              type="button"
+              className={`configurator-swipe-current ${activeGalleryItem?.isAddMore ? "add-more" : ""}`}
+              onClick={() => openGalleryItem(activeGalleryItem)}
+            >
+              <span className="configurator-swipe-image floating-media">
+                {activeGalleryItem?.isAddMore ? (
+                  <i aria-hidden="true">+</i>
+                ) : (
+                  <img src={activeGalleryItem?.image?.url || machineImage} alt={`${activeGalleryItem?.name || "Machine"} machine`} />
+                )}
+              </span>
+              <span className="configurator-swipe-copy">
+                <small>{activeGalleryItem?.isAddMore ? "New machine" : `Machine ${String(galleryIndex + 1).padStart(2, "0")} / ${String(machines.length).padStart(2, "0")}`}</small>
+                <strong>{activeGalleryItem?.name}</strong>
+                <span>{activeGalleryItem?.isAddMore ? "Prepare another machine" : "Open machine setup"} <b aria-hidden="true">→</b></span>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className="configurator-swipe-preview next"
+              onClick={() => moveGalleryTo(galleryIndex + 1)}
+              disabled={!nextGalleryItem}
+              aria-label="Next machine"
+            >
+              <span className="configurator-swipe-direction">Next →</span>
+              <span className="configurator-swipe-preview-content floating-media">
+                {nextGalleryItem && !nextGalleryItem.isAddMore && (
+                  <img src={nextGalleryItem.image?.url || machineImage} alt="" />
+                )}
+                {nextGalleryItem?.isAddMore && <i aria-hidden="true">+</i>}
+                <strong>{nextGalleryItem?.name || "End of list"}</strong>
+              </span>
+            </button>
+          </div>
+
+          <div className="configurator-swipe-progress" aria-label={`${galleryIndex + 1} of ${galleryItems.length}`}>
+            {galleryItems.map((item, index) => (
+              <button
+                type="button"
+                key={item.id}
+                className={index === galleryIndex ? "active" : ""}
+                onClick={() => moveGalleryTo(index)}
+                aria-label={`Show ${item.name}`}
+              />
+            ))}
+          </div>
+        </div>
+
+        {addMachineOpen && (
+          <div className="configurator-add-backdrop" onClick={() => setAddMachineOpen(false)}>
+            <form className="configurator-add-dialog" onSubmit={addMachine} onClick={(event) => event.stopPropagation()}>
+              <div className="configurator-add-heading"><div><span>New machine</span><h2>Add to monitoring</h2></div><button type="button" onClick={() => setAddMachineOpen(false)}>×</button></div>
+              <label>Machine name<input value={newMachine.name} onChange={(event) => setNewMachine((current) => ({ ...current, name: event.target.value }))} placeholder="Example: Mespack 2" required /></label>
+              <label>MQTT broker URL<input value={newMachine.source_endpoint} onChange={(event) => setNewMachine((current) => ({ ...current, source_endpoint: event.target.value }))} placeholder="mqtt://broker:1883" /></label>
+              <label>MQTT topic<input value={newMachine.source_topic} onChange={(event) => setNewMachine((current) => ({ ...current, source_topic: event.target.value }))} placeholder="factory/dressings/mespack-2/data" /></label>
+              <div className="configurator-add-actions"><button type="button" onClick={() => setAddMachineOpen(false)}>Cancel</button><button className="primary" type="submit" disabled={saving}>{saving ? "Adding…" : "Add machine"}</button></div>
+            </form>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="configurator-layout editor-open">
+      <section className="configurator-main">
+        {message && <div className="configurator-notice success">{message}</div>}
+        {error && <div className="configurator-notice error">{error}</div>}
+
+        <div className="configurator-scroll">
+          <section className="configurator-section identity-source-section">
+            <div className="configurator-section-heading"><span>Step 1</span><div><strong>Machine connection</strong><small>Machine identity and MQTT source</small></div></div>
+            <div className="configurator-form-grid">
+              <label>Machine name<input value={draft.name} onChange={(event) => updateDraft("name", event.target.value)} /></label>
+              <label>MQTT broker URL<input value={draft.data_source.source_endpoint || ""} onChange={(event) => updateSource("source_endpoint", event.target.value)} placeholder="mqtt://broker:1883" /></label>
+              <label>MQTT topic<input value={draft.data_source.source_topic || ""} onChange={(event) => updateSource("source_topic", event.target.value)} placeholder="factory/mespack/data" /></label>
+            </div>
+          </section>
+
+          <section className="configurator-section image-segment-section">
+            <div className="configurator-section-heading"><span>Step 2</span><div><strong>Machine image and segments</strong><small>Click the image to draw the selected segment</small></div></div>
+            <div className="segment-workbench">
+              <div className="segment-canvas-column">
+                <div className="segment-editor-canvas floating-media" style={{ aspectRatio: FIXED_MACHINE_CANVAS_ASPECT }} onClick={addPolygonPoint}>
+                  <img src={draft.imagePreview || machineImage} alt="Machine segmentation editor" />
+                  <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+                    {draft.segments.map((segment) => (
+                      <polygon
+                        key={segment.id}
+                        points={polygonToSvgPoints(segment.polygon_points)}
+                        className={segment.id === segmentDraft.id ? "selected" : ""}
+                        onClick={(event) => { event.stopPropagation(); chooseSegment(segment); }}
+                      />
+                    ))}
+                    {segmentDraft.polygon_points.length > 0 && (
+                      <polygon className="editing" points={polygonToSvgPoints(segmentDraft.polygon_points)} />
+                    )}
+                  </svg>
+                  {segmentDraft.polygon_points.map(([x, y], index) => (
+                    <i key={`${x}-${y}-${index}`} style={{ left: `${x}%`, top: `${y}%` }}>{index + 1}</i>
+                  ))}
+                </div>
+              </div>
+
+              <div className="segment-editor-panel">
+                <div className="segment-editor-toolbar">
+                  <strong>Segment settings</strong>
+                  <button onClick={startNewSegment}>+ New</button>
+                </div>
+                <label>Choose segment
+                  <select
+                    className="segment-select"
+                    value={segmentDraft.id || ""}
+                    onChange={(event) => {
+                      const selected = draft.segments.find((segment) => segment.id === event.target.value);
+                      if (selected) chooseSegment(selected);
+                      else startNewSegment();
+                    }}
+                  >
+                    <option value="">New segment</option>
+                    {draft.segments.map((segment) => <option key={segment.id} value={segment.id}>{segment.name}</option>)}
+                  </select>
+                </label>
+                <label>Segment name<input value={segmentDraft.name} onChange={(event) => { setSegmentDraft((current) => ({ ...current, name: event.target.value, id: current.id || segmentIdFromName(event.target.value) })); setSegmentDirty(true); }} placeholder="Example: Infeed" /></label>
+                <label>Area / location<input value={segmentDraft.area} onChange={(event) => { setSegmentDraft((current) => ({ ...current, area: event.target.value })); setSegmentDirty(true); }} placeholder="Infeed Section" /></label>
+                <div className="segment-drawing-tools">
+                  <span>{segmentDraft.polygon_points.length} points</span>
+                  <button onClick={() => { setSegmentDraft((current) => ({ ...current, polygon_points: current.polygon_points.slice(0, -1) })); setSegmentDirty(true); }} disabled={!segmentDraft.polygon_points.length}>Undo</button>
+                  <button onClick={() => { setSegmentDraft((current) => ({ ...current, polygon_points: [] })); setSegmentDirty(true); }} disabled={!segmentDraft.polygon_points.length}>Clear</button>
+                </div>
+                <label className="machine-image-upload">Replace machine image<input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleImageFile} /></label>
+                <div className="segment-editor-actions"><button onClick={deleteSegment} disabled={!segmentDraft.id}>Delete</button><button className="primary" onClick={saveSegmentToDraft}>Add / update segment</button></div>
+              </div>
+            </div>
+          </section>
+
+          <section className="configurator-section point-mapping-section">
+            <div className="configurator-section-heading"><span>Step 3</span><div><strong>Data mapping and meaning</strong><small>Choose MQTT fields, then define exactly what every received value means</small></div><div className="point-add-controls"><select defaultValue="" onChange={(event) => { if (event.target.value) addPointMapping(event.target.value); event.target.value = ""; }}><option value="">+ Detected data</option>{detectedFieldKeys.map((key) => <option key={key} value={key}>{key}</option>)}</select><button onClick={() => addPointMapping()}>+ Blank</button></div></div>
+            <datalist id={`available-data-${draft.id}`}>{detectedFieldKeys.map((key) => <option key={key} value={key} />)}</datalist>
+            <div
+              {...mappingDrag}
+              className={`point-mapping-table ${mappingDrag.className}`}
+              aria-label="Machine data mappings. Drag horizontally to browse columns."
+            >
+              <div className="point-mapping-head"><span>No.</span><span>Point name</span><span>Primary MQTT field</span><span>Secondary field</span><span>Segment</span><span>Value meaning</span><span /></div>
+              {draft.points.map((point, index) => (
+                <div className="point-mapping-entry" key={`${point.point_id}-${index}`}>
+                  <div className="point-mapping-row">
+                    <input type="number" value={point.point_id} onChange={(event) => updatePoint(index, "point_id", event.target.value)} />
+                    <input value={point.name || ""} onChange={(event) => updatePoint(index, "name", event.target.value)} />
+                    <input list={`available-data-${draft.id}`} value={point.source_key_primary || ""} onChange={(event) => updatePoint(index, "source_key_primary", event.target.value)} />
+                    <input list={`available-data-${draft.id}`} value={point.source_key_secondary || ""} onChange={(event) => updatePoint(index, "source_key_secondary", event.target.value)} placeholder="Optional" />
+                    <select value={point.segment_id || ""} onChange={(event) => updatePoint(index, "segment_id", event.target.value || null)}><option value="">Unassigned</option>{draft.segments.map((segment) => <option key={segment.id} value={segment.id}>{segment.name}</option>)}</select>
+                    <button className="point-meaning-button" onClick={() => setRulesPointId(point.point_id)}>Define 1 / 0</button>
+                    <button className="point-remove-button" onClick={() => removePointMapping(index)} aria-label={`Remove ${point.name}`}>×</button>
+                  </div>
+                </div>
+              ))}
+              {!draft.points.length && <div className="point-mapping-empty">No mappings yet. Add the HighByte fields that this machine should monitor.</div>}
+            </div>
+          </section>
+        </div>
+      </section>
+
+      {activeRulesPoint && (
+        <div className="value-rules-modal-backdrop" role="presentation" onClick={() => setRulesPointId(null)}>
+          <div className="value-rules-modal-shell" role="dialog" aria-modal="true" aria-label={`Value meanings for ${activeRulesPoint.name}`} onClick={(event) => event.stopPropagation()}>
+            <PointValueRulesEditor
+              point={activeRulesPoint}
+              pointIndex={activeRulesPointIndex}
+              onUpdate={updateValueRule}
+              onAdd={addValueRule}
+              onRemove={removeValueRule}
+              onFallbackUpdate={updateFallbackRule}
+              onClose={() => setRulesPointId(null)}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PointValueRulesEditor({ point, pointIndex, onUpdate, onAdd, onRemove, onFallbackUpdate, onClose }) {
+  const rules = cloneValueRules(point.value_rules);
+  const channels = [
+    { key: "primary", label: "Primary field", sourceKey: point.source_key_primary },
+    { key: "secondary", label: "Secondary field", sourceKey: point.source_key_secondary },
+  ].filter((channel) => channel.key === "primary" || channel.sourceKey);
+
+  return (
+    <section className="point-value-rules" aria-label={`Value meanings for ${point.name}`}>
+      <header>
+        <div>
+          <strong>Incoming value meanings</strong>
+          <small>Interlocks keep their Boolean raw value. Define what 1 and 0 mean to operators.</small>
+        </div>
+        <div className="value-rule-header-actions">
+          <span>{point.name}</span>
+          <button type="button" onClick={onClose} aria-label="Close value meanings">×</button>
+        </div>
+      </header>
+
+      <div className="value-rule-channels">
+        {channels.map((channel) => (
+          <div className="value-rule-channel" key={channel.key}>
+            <div className="value-rule-channel-heading">
+              <div><strong>{channel.label}</strong><small>{channel.sourceKey || "Choose an MQTT field above"}</small></div>
+              <button onClick={() => onAdd(pointIndex, channel.key)}>+ Value</button>
+            </div>
+            <div className="value-rule-head"><span>Raw Boolean</span><span>Display label</span><span>Condition</span><span>Color</span><span /></div>
+            {rules[channel.key].map((rule, ruleIndex) => (
+              <div className="value-rule-row" key={`${channel.key}-${ruleIndex}`}>
+                <input value={rule.value ?? ""} onChange={(event) => onUpdate(pointIndex, channel.key, ruleIndex, "value", event.target.value)} placeholder="1 or 0" inputMode="numeric" />
+                <input value={rule.label || ""} onChange={(event) => onUpdate(pointIndex, channel.key, ruleIndex, "label", event.target.value)} placeholder="Locked" />
+                <select value={rule.severity || "safe"} onChange={(event) => onUpdate(pointIndex, channel.key, ruleIndex, "severity", event.target.value)}>
+                  {VALUE_SEVERITIES.map((severity) => <option key={severity.value} value={severity.value}>{severity.label}</option>)}
+                </select>
+                <input className="value-rule-color" type="color" value={rule.color || "#22c55e"} onChange={(event) => onUpdate(pointIndex, channel.key, ruleIndex, "color", event.target.value)} aria-label="Status color" />
+                <button onClick={() => onRemove(pointIndex, channel.key, ruleIndex)} aria-label="Remove value meaning">×</button>
+              </div>
+            ))}
+            {!rules[channel.key].length && <div className="value-rule-empty">No meanings defined for this field.</div>}
+          </div>
+        ))}
+      </div>
+
+      <div className="value-rule-fallback">
+        <div><strong>Unmatched value</strong><small>Used when MQTT sends a value that is not listed above.</small></div>
+        <input value={rules.fallback.label || ""} onChange={(event) => onFallbackUpdate(pointIndex, "label", event.target.value)} placeholder="Unknown" />
+        <select value={rules.fallback.severity || "warning"} onChange={(event) => onFallbackUpdate(pointIndex, "severity", event.target.value)}>
+          {VALUE_SEVERITIES.map((severity) => <option key={severity.value} value={severity.value}>{severity.label}</option>)}
+        </select>
+        <input className="value-rule-color" type="color" value={rules.fallback.color || "#f59e0b"} onChange={(event) => onFallbackUpdate(pointIndex, "color", event.target.value)} aria-label="Fallback color" />
+      </div>
+    </section>
+  );
+}
+
+function LegacyDashboardApp({
+  machineCatalog,
+  accessRole,
+  theme,
+  setTheme,
+  onOpenAdmin,
+  onOpenMachineSetup,
+}) {
   const [activeMachineId, setActiveMachineId] = useState("mespack");
   const [machineData, setMachineData] = useState(null);
   const [apiError, setApiError] = useState("");
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [theme, setTheme] = useState("light");
   const [viewMode, setViewMode] = useState("2d");
   const [selectedPoint, setSelectedPoint] = useState(null);
-  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [machinePickerOpen, setMachinePickerOpen] = useState(false);
+  const [machineImageAspect, setMachineImageAspect] = useState(FIXED_MACHINE_CANVAS_ASPECT);
   const [faceModalOpen, setFaceModalOpen] = useState(false);
   const [confirmToast, setConfirmToast] = useState("");
+  const [machineSwipeOffset, setMachineSwipeOffset] = useState(0);
+  const [machineSwipeActive, setMachineSwipeActive] = useState(false);
+  const machineSwipeGesture = useRef({ active: false, startX: 0, dragged: false, ignoreClick: false });
 
-  const activeMachine = MACHINE_CONFIGS[activeMachineId];
+  const machineConfigs = useMemo(() => {
+    const configured = (machineCatalog || []).filter((machine) => machine.is_active !== false);
+    if (!configured.length) return MACHINE_CONFIGS;
+
+    return configured.reduce((result, machine) => {
+      const template = MACHINE_CONFIGS[machine.template_id] || MACHINE_CONFIGS.mespack;
+      const databasePoints = (machine.points || []).filter((point) => point.is_active !== false);
+      const databaseZones = (machine.segments || []).filter((segment) => segment.is_active !== false);
+      result[machine.id] = {
+        ...template,
+        id: machine.id,
+        name: machine.name,
+        title: machine.name,
+        subtitle: machine.id === "mespack"
+          ? template.subtitle
+          : "Configured machine using the Mespack monitoring template",
+        apiUrl: machine.api_url || template.apiUrl,
+        image: machine.image?.url || template.image,
+        canvasAspectRatio: Number(machine.image?.canvas_aspect_ratio || FIXED_MACHINE_CANVAS_ASPECT),
+        points: databasePoints.length ? databasePoints.map(machinePointFromDatabase) : template.points,
+        zones: databaseZones.length ? databaseZones.map(machineZoneFromDatabase) : template.zones,
+        dataSource: machine.data_source || null,
+      };
+      return result;
+    }, {});
+  }, [machineCatalog]);
+
+  const activeMachine = machineConfigs[activeMachineId] || Object.values(machineConfigs)[0] || MACHINE_CONFIGS.mespack;
+
+  useEffect(() => {
+    if (!machineConfigs[activeMachineId]) {
+      setActiveMachineId(Object.keys(machineConfigs)[0] || "mespack");
+    }
+  }, [machineConfigs, activeMachineId]);
 
   function showConfirmationToast(message) {
     setConfirmToast(message);
@@ -287,15 +1528,15 @@ export default function App() {
     setMachineData(null);
     setApiError("");
     setSelectedPoint(null);
-    setShowDetailsModal(false);
+    setMachinePickerOpen(false);
+    setMachineImageAspect(activeMachine.canvasAspectRatio || FIXED_MACHINE_CANVAS_ASPECT);
 
     fetchMachineData();
 
     const interval = setInterval(fetchMachineData, 1000);
     return () => clearInterval(interval);
-  }, [activeMachineId]);
+  }, [activeMachineId, activeMachine.apiUrl, activeMachine.canvasAspectRatio]);
 
-  const status = machineData?.status || "WAITING";
   const payload = machineData?.data || {};
 
  /* =========================================================
@@ -313,10 +1554,10 @@ export default function App() {
 
 const machineRows = useMemo(() => {
   return activeMachine.points.map((point) => {
-    const liveGuardOnValue = payload?.[point.guardTag];
-    const liveHealthyValue = payload?.[point.interlockTag];
-    const liveOpenCloseValue = payload?.[`${point.guardTag}_OpenClose`];
-    const liveLockStateValue = payload?.[`${point.interlockTag}_LockState`];
+    const liveGuardOnValue = payloadValueAtPath(payload, point.guardTag);
+    const liveHealthyValue = payloadValueAtPath(payload, point.interlockTag);
+    const liveOpenCloseValue = payloadValueAtPath(payload, `${point.guardTag}_OpenClose`);
+    const liveLockStateValue = payloadValueAtPath(payload, `${point.interlockTag}_LockState`);
 
     const fallbackGuardOn =
       liveGuardOnValue === undefined
@@ -336,12 +1577,15 @@ const machineRows = useMemo(() => {
       normalizeLockState(liveLockStateValue) ||
       (fallbackHealthyOn ? "LOCK" : "UNLOCK");
 
+    const interpretation = pointInterpretation(point, payload);
+
     return {
       ...point,
       openClose,
       lockState,
       guardOpen: openClose === "OPEN",
       interlockOk: lockState === "LOCK",
+      interpretation,
     };
   });
 }, [payload, activeMachine]);
@@ -351,16 +1595,6 @@ const machineRows = useMemo(() => {
      attentionRows = everything NOT READY / FAULT / WARNING
      readyRows     = READY only
   ========================================================= */
-
-  const attentionRows = machineRows.filter((machine) => {
-    const state = getSafetyState(machine);
-    return state.className !== "safe";
-  });
-
-  const readyRows = machineRows.filter((machine) => {
-    const state = getSafetyState(machine);
-    return state.className === "safe";
-  });
 
   /* =========================================================
      06 - BUILD MACHINE ZONES
@@ -374,27 +1608,42 @@ const machineRows = useMemo(() => {
 
       return {
         ...zone,
-        tags: zoneTags,
+        tags: zoneTags.slice().sort((first, second) => {
+          const priority = { danger: 0, warning: 1, safe: 2 };
+          const firstRank = priority[getSafetyState(first).className] ?? 3;
+          const secondRank = priority[getSafetyState(second).className] ?? 3;
+          return firstRank - secondRank || first.id - second.id;
+        }),
         state: zoneState,
       };
     });
   }, [machineRows, activeMachine]);
 
-  /* =========================================================
-     07 - MACHINE STATE FLAGS
-  ========================================================= */
-
-  const isRunning = status === "RUNNING" || status === "READY";
-  const isStopped = status === "STOPPED";
-  const verificationRequired = machineData?.verificationRequired ?? payload?.verificationRequired;
-  const verificationLabel = machineData?.verificationLabel || payload?.verificationLabel || "Waiting for HighByte data";
+  const machineList = Object.values(machineConfigs);
+  const activeMachineIndex = Math.max(0, machineList.findIndex((machine) => machine.id === activeMachineId));
+  const previousMachine = machineList.length > 1
+    ? machineList[(activeMachineIndex - 1 + machineList.length) % machineList.length]
+    : null;
+  const nextMachine = machineList.length > 1
+    ? machineList[(activeMachineIndex + 1) % machineList.length]
+    : null;
+  // Alternate segments across the rails so every count stays balanced:
+  // 4 => 2/2, 3 => 2/1, 5 => 3/2. Rails with 3+ cards scroll internally.
+  const leftZones = zoneRows.filter((_, index) => index % 2 === 0);
+  const rightZones = zoneRows.filter((_, index) => index % 2 === 1);
+  const zoneLayoutClass = rightZones.length ? "dual-rail" : leftZones.length ? "single-rail" : "no-rail";
 
   /* =========================================================
      08 - ZOOM CALCULATION
      Used when clicking a machine zone.
   ========================================================= */
 
-  const activeZoomZone = selectedPoint?.type === "zone" ? selectedPoint : null;
+  const activeZoomZone = selectedPoint?.type === "zone"
+    ? {
+        ...(zoneRows.find((zone) => zone.id === selectedPoint.id) || selectedPoint),
+        focusedPointId: selectedPoint.focusedPointId,
+      }
+    : null;
   const zoomScale = activeZoomZone?.zoomScale || 1;
   const zoomX = activeZoomZone ? parsePercent(activeZoomZone.labelX) : 50;
   const zoomY = activeZoomZone ? parsePercent(activeZoomZone.labelY) : 50;
@@ -415,266 +1664,227 @@ const machineRows = useMemo(() => {
      09 - CLICK HANDLERS
   ========================================================= */
 
-  function openPointDetails(machine, safety) {
-    setSelectedPoint({
-      type: "point",
-      ...machine,
-      state: safety,
-    });
-    setShowDetailsModal(true);
-  }
-
-  function selectZone(zone, openModal = false) {
+  function selectZone(zone) {
     setSelectedPoint({
       type: "zone",
       ...zone,
     });
+    setMachinePickerOpen(false);
+  }
 
-    if (openModal) {
-      setShowDetailsModal(true);
+  function selectMachinePoint(point) {
+    const parentZone = zoneRows.find((zone) => zone.tagIds.includes(point.id));
+
+    if (parentZone) {
+      setSelectedPoint({
+        type: "zone",
+        ...parentZone,
+        focusedPointId: point.id,
+      });
     }
+
+    setMachinePickerOpen(false);
   }
 
   function resetView() {
     setSelectedPoint(null);
-    setShowDetailsModal(false);
+  }
+
+  function cycleMachine(direction) {
+    if (machineList.length < 2) return;
+    const nextIndex = (activeMachineIndex + direction + machineList.length) % machineList.length;
+    switchMachine(machineList[nextIndex].id);
+  }
+
+  function startMachineSwipe(event) {
+    if (machineList.length < 2 || (event.pointerType === "mouse" && event.button !== 0)) return;
+    machineSwipeGesture.current = {
+      active: true,
+      startX: event.clientX,
+      dragged: false,
+      ignoreClick: false,
+      offset: 0,
+    };
+    setMachineSwipeActive(true);
+  }
+
+  function moveMachineSwipe(event) {
+    if (!machineSwipeGesture.current.active) return;
+    const distance = event.clientX - machineSwipeGesture.current.startX;
+    if (!machineSwipeGesture.current.dragged && Math.abs(distance) < 7) return;
+    machineSwipeGesture.current.dragged = true;
+    machineSwipeGesture.current.ignoreClick = true;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    const nextOffset = Math.max(-110, Math.min(110, distance));
+    machineSwipeGesture.current.offset = nextOffset;
+    setMachineSwipeOffset(nextOffset);
+    event.preventDefault();
+  }
+
+  function finishMachineSwipe(event) {
+    if (!machineSwipeGesture.current.active) return;
+    const finalOffset = Number(machineSwipeGesture.current.offset || 0);
+    const shouldSwitch = machineSwipeGesture.current.dragged && Math.abs(finalOffset) >= 54;
+    const direction = finalOffset < 0 ? 1 : -1;
+    machineSwipeGesture.current.active = false;
+    setMachineSwipeActive(false);
+    setMachineSwipeOffset(0);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (shouldSwitch) cycleMachine(direction);
+    window.setTimeout(() => {
+      machineSwipeGesture.current.ignoreClick = false;
+      machineSwipeGesture.current.dragged = false;
+    }, 0);
+  }
+
+  function switchMachine(machineId) {
+    setActiveMachineId(machineId);
+    setSelectedPoint(null);
+    setMachinePickerOpen(false);
   }
 
   return (
-    <div className="app-shell" data-theme={theme}>
-      {/* =========================================================
-          10 - TOP HEADER
-      ========================================================= */}
-
-     <header className="topbar">
-  <div className="desktop-topbar polished-topbar">
-    <div className="topbar-left">
-      <div className="brand-card">
-        <div className="brand-icon">⚙️</div>
-        <div>
-          <div className="brand-title">MACHINE DASHBOARD</div>
-          <div className="brand-subtitle">HighByte MQTT Monitoring System</div>
+    <div className="studio-app" data-theme={theme}>
+      <header className="studio-topbar">
+        <div className="studio-brand">
+          <span className="studio-brand-mark" aria-hidden="true"><i /><i /><i /><i /></span>
+          <strong>Machine Monitoring</strong>
         </div>
-      </div>
 
-      <div className="topbar-machines-inline">
-        {Object.values(MACHINE_CONFIGS).map((machine) => (
+        <div className="studio-top-actions">
           <button
-            key={machine.id}
-            className={`top-nav-btn ${activeMachineId === machine.id ? "active" : ""}`}
-            onClick={() => setActiveMachineId(machine.id)}
+            className="studio-admin-button"
+            onClick={accessRole === "admin" ? onOpenMachineSetup : onOpenAdmin}
           >
-            {machine.name}
+            Admin
           </button>
-        ))}
-      </div>
-    </div>
-
-    <div className="topbar-right polished-actions">
-      <button className="face-confirm-btn top-confirm-btn" onClick={() => setFaceModalOpen(true)}>
-        Confirm Check
-      </button>
-
-      <div className={`top-state-inline ${getStatusClass(status)}`}>
-        <div className="top-state-dot" />
-        <span>{status}</span>
-      </div>
-
-      <button
-        className="top-nav-btn theme-toggle-btn"
-        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-      >
-        {theme === "dark" ? "☀ Light" : "🌙 Dark"}
-      </button>
-    </div>
-  </div>
-</header>
-
-      {/* =========================================================
-          11 - SUMMARY STRIP
-      ========================================================= */}
-
-      <section className="summary-strip">
-        <div className="summary-left">
-          <div className={`summary-badge machine-badge ${getStatusClass(status)}`}>
-            {isRunning ? "✓" : isStopped ? "!" : "•"}
-          </div>
-
-          <div className="summary-title-wrap">
-  <div className="summary-title">{activeMachine.title}</div>
-  <div className="summary-subtitle">{activeMachine.subtitle}</div>
-</div>
-          <div
-            className={`live-badge ${
-              machineData?.mqttConnected ? "online" : "offline"
-            }`}
+          <button
+            className="studio-theme-button"
+            onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
           >
-            {machineData?.mqttConnected ? "MQTT LIVE" : "MQTT OFFLINE"}
-          </div>
+            <span>{theme === "dark" ? "☀" : "☾"}</span>
+            {theme === "dark" ? "Light" : "Dark"}
+          </button>
+          <button className="studio-confirm-button" onClick={() => setFaceModalOpen(true)}>
+            <span>✓</span> Confirm check
+          </button>
         </div>
+      </header>
 
-        <div className="summary-stats">
-          <label className="summary-view-select-wrap" title="Switch machine view">
-            <span>VIEW</span>
-            <select
-              className="summary-view-select"
-              value={viewMode}
-              onChange={(event) => {
-                setViewMode(event.target.value);
-                resetView();
-              }}
-            >
-              <option value="2d">2D</option>
-              <option value="3d">3D</option>
-            </select>
-          </label>
-          <SummaryStat value={attentionRows.length} label="ATTENTION" variant="red" />
-          <SummaryStat value={verificationRequired ? "REQ" : "SKIP"} label="VERIFY" variant={verificationRequired ? "amber" : "green"} />
-          <SummaryStat value={zoneRows.length} label="ZONES" variant="green" />
-          <SummaryStat value={status} label="STATE" variant="amber" />
-        </div>
-      </section>
+      <main className="studio-stage">
+        <div
+          className={`studio-machine-switcher studio-card-swipe ${machineSwipeActive ? "is-swiping" : ""}`}
+          aria-label="Machine selector"
+          style={{ "--swipe-offset": `${machineSwipeOffset}px` }}
+          onPointerDown={startMachineSwipe}
+          onPointerMove={moveMachineSwipe}
+          onPointerUp={finishMachineSwipe}
+          onPointerCancel={finishMachineSwipe}
+          onClickCapture={(event) => {
+            if (!machineSwipeGesture.current.ignoreClick) return;
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
+          <button className="studio-machine-preview previous" onClick={() => cycleMachine(-1)} disabled={!previousMachine} aria-label="Previous machine">
+            <span>← Previous</span>
+            <strong>{previousMachine?.name || "No previous machine"}</strong>
+          </button>
+          <button
+            key={activeMachine.id}
+            type="button"
+            className="studio-machine-card"
+            onClick={() => setMachinePickerOpen((current) => !current)}
+            aria-expanded={machinePickerOpen}
+            aria-controls="studio-machine-picker"
+          >
+            <span className="studio-machine-card-image floating-media"><img src={activeMachine.image} alt="" /></span>
+            <span className="studio-machine-card-copy">
+              <small>Machine {String(activeMachineIndex + 1).padStart(2, "0")} / {String(machineList.length).padStart(2, "0")}</small>
+              <strong>{activeMachine.name}<i aria-hidden="true">⌄</i></strong>
+            </span>
+          </button>
+          <button className="studio-machine-preview next" onClick={() => cycleMachine(1)} disabled={!nextMachine} aria-label="Next machine">
+            <span>Next →</span>
+            <strong>{nextMachine?.name || "No next machine"}</strong>
+          </button>
 
-      {/* =========================================================
-          12 - MAIN WORKSPACE
-      ========================================================= */}
-
-      <main className="workspace machine-workspace">
-        {/* =========================================================
-            13 - LEFT PANEL
-            Top = Needs Attention
-            Bottom = Ready Points
-        ========================================================= */}
-
-        <aside className="panel left-panel machine-left-panel">
-          <div className="side-list-header">
-            <div>
-              <div className="panel-title">Machine Points</div>
-              <div className="side-list-subtitle">Click a row to inspect</div>
+          {machinePickerOpen && (
+            <div className="studio-machine-picker" id="studio-machine-picker">
+              <div className="studio-machine-picker-heading">
+                <span>Available machines</span>
+                <button type="button" onClick={() => setMachinePickerOpen(false)} aria-label="Close machine selector">×</button>
+              </div>
+              <div className="studio-machine-picker-list">
+                {machineList.map((machine) => (
+                  <button
+                    type="button"
+                    className={machine.id === activeMachineId ? "active" : ""}
+                    key={machine.id}
+                    onClick={() => switchMachine(machine.id)}
+                  >
+                    <span className="floating-media"><img src={machine.image} alt="" /></span>
+                    <strong>{machine.name}</strong>
+                    <small>{machine.id === activeMachineId ? "Selected" : "Open machine"}</small>
+                  </button>
+                ))}
+              </div>
             </div>
+          )}
+        </div>
 
-            <div className="side-count">{machineRows.length}</div>
-          </div>
+        <div className={`studio-workspace ${zoneLayoutClass}`}>
+          <ZoneStatusRail
+            zones={leftZones}
+            selectedPoint={selectedPoint}
+            onZoneClick={selectZone}
+            onPointClick={selectMachinePoint}
+            side="left"
+          />
 
-          {/* UPDATE: NEEDS ATTENTION SECTION */}
-          <div className="left-attention-card">
-            <div className="attention-header">
+          <section className="studio-machine-panel">
+            <div className="studio-machine-caption">
               <div>
-                <div className="attention-title">Needs Attention</div>
-                <div className="attention-subtitle">
-                  Points requiring line acknowledgement
-                </div>
+                <strong>{activeMachine.name}</strong>
               </div>
-
-              <div
-                className={`attention-count ${
-                  attentionRows.length > 0 ? "active" : ""
-                }`}
-              >
-                {attentionRows.length}
+              <div className="studio-view-controls">
+                <span
+                  className={`studio-caption-connection ${machineData?.mqttConnected ? "online" : "offline"}`}
+                  title={machineData?.mqttConnected
+                    ? `MQTT connected${lastUpdated ? ` · ${lastUpdated.toLocaleTimeString()}` : ""}`
+                    : apiError ? `Data unavailable · ${apiError}` : "MQTT offline"}
+                />
+                <button
+                  onClick={() => {
+                    setViewMode((current) => current === "2d" ? "3d" : "2d");
+                    resetView();
+                  }}
+                >
+                  {viewMode === "2d" ? "3D" : "2D"}
+                </button>
               </div>
             </div>
 
-            {attentionRows.length > 0 ? (
-              <div className="attention-list">
-                {attentionRows.map((machine) => {
-                  const safety = getSafetyState(machine);
-
-                  return (
-                    <button
-                      className={`attention-row ${safety.className} ${
-                        selectedPoint?.type === "point" &&
-                        selectedPoint?.id === machine.id
-                          ? "active"
-                          : ""
-                      }`}
-                      key={`attention-${machine.id}`}
-                      onClick={() => openPointDetails(machine, safety)}
-                    >
-                      <div className="attention-no">{machine.id}</div>
-
-                      <div className="attention-info">
-                        <div className="attention-name">{machine.name}</div>
-                        <div className="attention-area">{machine.area}</div>
-                      </div>
-
-                      <span className={`attention-chip ${safety.className}`}>
-                        {safety.label}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="attention-empty">All points are ready.</div>
-            )}
-          </div>
-
-          <div className="ready-section-label">
-  <div className="ready-section-title">Ready Points</div>
-  <div className="ready-section-count">{readyRows.length}</div>
-</div>
-
-<div className="machine-table compact-machine-table">
-  <div className="machine-table-head compact-head">
-    <span>No.</span>
-    <span>Name</span>
-    <span>Status</span>
-  </div>
-
-  {readyRows.map((machine) => {
-    const safety = getSafetyState(machine);
-
-    return (
-      <button
-        className={`machine-row compact-row ${
-          selectedPoint?.type === "point" &&
-          selectedPoint?.id === machine.id
-            ? "active"
-            : ""
-        }`}
-        key={machine.id}
-        onClick={() => openPointDetails(machine, safety)}
-      >
-        <div className="machine-number">{machine.id}</div>
-
-        <div className="machine-info">
-          <div className="machine-row-name">{machine.name}</div>
-        </div>
-
-        <span className={`machine-status-chip ${safety.className}`}>
-          {safety.label}
-        </span>
-      </button>
-    );
-  })}
-</div>
-        </aside>
-
-        {/* =========================================================
-            14 - CENTER MACHINE MAP
-        ========================================================= */}
-
-        <section className="panel center-panel machine-center-panel">
-          <div className="table-card">
+            <div className="studio-machine-frame">
             {viewMode === "2d" ? (
             <div className={`machine-map ${activeZoomZone ? "zoomed" : ""}`}>
               <div className="machine-map-grid" />
 
               <div className="machine-zoom-layer">
-                <div className="machine-stage">
+                <div className="machine-stage machine-location-stage" key={activeMachine.id}>
                   <div
-                    className={`machine-canvas ${
+                    className={`machine-canvas floating-media ${
                       activeZoomZone ? "is-zoomed" : ""
                     }`}
-                    style={machineCanvasStyle}
+                    style={{ ...machineCanvasStyle, aspectRatio: machineImageAspect }}
                   >
                     <img
                       src={activeMachine.image}
                       alt={activeMachine.name}
                       className="machine-img"
-                      onLoad={() => console.log("✅ Machine image loaded")}
-                      onError={() => console.log("❌ Machine image failed to load")}
                     />
 
                     <svg
@@ -694,7 +1904,7 @@ const machineRows = useMemo(() => {
                           }`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            selectZone(zone, true);
+                            selectZone(zone);
                           }}
                         />
                       ))}
@@ -715,7 +1925,7 @@ const machineRows = useMemo(() => {
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          selectZone(zone, true);
+                          selectZone(zone);
                         }}
                         title={`${zone.name} - ${zone.state.label}`}
                       >
@@ -727,125 +1937,52 @@ const machineRows = useMemo(() => {
               </div>
 
               {activeZoomZone && (
-                <button className="reset-zoom-btn" onClick={resetView}>
-                  Reset View
-                </button>
+                <div
+                  className="studio-location-transition"
+                  key={`${activeMachine.id}-${activeZoomZone.id}`}
+                  aria-hidden="true"
+                />
               )}
             </div>
             ) : (
-              <Machine3DView
-                machine={activeMachine}
-                zones={zoneRows}
-                selectedPoint={selectedPoint}
-                onZoneClick={(zone) => selectZone(zone, true)}
-              />
+              <Suspense fallback={<div className="machine-3d-loading">Loading 3D view…</div>}>
+                <Machine3DView
+                  machine={activeMachine}
+                  zones={zoneRows}
+                  selectedPoint={selectedPoint}
+                  onZoneClick={(zone) => selectZone(zone)}
+                  theme={theme}
+                />
+              </Suspense>
             )}
-          </div>
-        </section>
+            </div>
+          </section>
+
+          <ZoneStatusRail
+            zones={rightZones}
+            selectedPoint={selectedPoint}
+            onZoneClick={selectZone}
+            onPointClick={selectMachinePoint}
+            side="right"
+          />
+        </div>
       </main>
 
-      {/* =========================================================
-          15 - DETAILS MODAL
-          Opens when clicking a point or zone.
-      ========================================================= */}
-
-      {showDetailsModal && selectedPoint && (
-  <div
-    className={`details-modal-backdrop ${
-      selectedPoint?.type === "zone" && selectedPoint?.detailImage
-        ? "has-detail-image"
-        : ""
-    }`}
-    style={{
-      backgroundImage:
-        selectedPoint?.type === "zone" && selectedPoint?.detailImage
-          ? `linear-gradient(rgba(15, 23, 42, 0.32), rgba(15, 23, 42, 0.72)), url(${selectedPoint.detailImage})`
-          : undefined,
-    }}
-    onClick={resetView}
-  >
-    <div className="details-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="details-modal-header">
-              <div>
-                <div className="details-modal-kicker">
-                  {selectedPoint.type === "zone" ? "Machine Zone" : "Machine Point"}
-                </div>
-                <div className="details-modal-title">{selectedPoint.name}</div>
-                <div className="details-modal-subtitle">{selectedPoint.area}</div>
-              </div>
-
-              <button className="details-modal-close" onClick={resetView}>
-                ×
-              </button>
-            </div>
-
-            <div className={`details-status-banner ${selectedPoint.state.className}`}>
-              {selectedPoint.state.label}
-            </div>
-
-            {selectedPoint.type === "point" ? (
-              <div className="details-grid">
-                <DetailItem label="Point No." value={selectedPoint.id} />
-                <DetailItem label="Status" value={selectedPoint.state.label} />
-                <DetailItem
-                  label="Open / Close"
-                  value={selectedPoint.openClose || (selectedPoint.guardOpen ? "OPEN" : "CLOSE")}
-                />
-                <DetailItem
-                  label="Lock / Unlock"
-                  value={selectedPoint.lockState || (selectedPoint.interlockOk ? "LOCK" : "UNLOCK")}
-                />
-                <DetailItem label="Open/Close Tag" value={selectedPoint.guardTag} wide />
-                <DetailItem
-                  label="Lock Tag"
-                  value={selectedPoint.interlockTag}
-                  wide
-                />
-              </div>
-            ) : (
-              <>
-                <div className="details-grid">
-                  <DetailItem label="Zone" value={selectedPoint.name} />
-                  <DetailItem label="Status" value={selectedPoint.state.label} />
-                  <DetailItem label="Tags Inside" value={selectedPoint.tags.length} />
-                  <DetailItem
-                    label="Unsafe Count"
-                    value={
-                      selectedPoint.tags.filter((tag) => {
-                        const state = getSafetyState(tag);
-                        return state.className !== "safe";
-                      }).length
-                    }
-                  />
-                </div>
-
-                <div className="zone-tag-list">
-                  <div className="zone-tag-list-title">Tags inside this zone</div>
-
-                  {selectedPoint.tags.map((tag) => {
-                    const tagState = getSafetyState(tag);
-
-                    return (
-                      <div className="zone-tag-row" key={tag.id}>
-                        <span className="zone-tag-no">{tag.id}</span>
-                        <span className="zone-tag-name">{tag.name}</span>
-                        <span className={`zone-tag-status ${tagState.className}`}>
-                          {tagState.label}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+      {activeZoomZone && (
+        <ZoneDetailPanel
+          key={`${activeMachine.id}-${activeZoomZone.id}-details`}
+          machineName={activeMachine.name}
+          zone={activeZoomZone}
+          focusedPointId={selectedPoint?.focusedPointId}
+          onPointClick={selectMachinePoint}
+          onClose={resetView}
+        />
       )}
 
       {faceModalOpen && (
-        <FaceAttendanceModal
-          machines={Object.values(MACHINE_CONFIGS)}
-          defaultMachineId={activeMachineId}
+        <ConfirmationModal
+          machine={activeMachine}
+          theme={theme}
           onClose={() => setFaceModalOpen(false)}
           onConfirmed={(message) => showConfirmationToast(message)}
         />
@@ -865,712 +2002,140 @@ const machineRows = useMemo(() => {
    16 - SMALL COMPONENTS
 ========================================================= */
 
-
-function Machine3DView({ machine, zones, selectedPoint, onZoneClick }) {
-  const modelSettings = machine.modelSettings || MACHINE_3D_MODEL_SETTINGS;
-  const zoneMapById = new Map((machine.modelZones || []).map((zone) => [zone.id, zone]));
-
-  const zoneOverlays = zones
-    .map((zone) => ({
-      ...zone,
-      map3d: zoneMapById.get(zone.id),
-    }))
-    .filter((zone) => zone.map3d);
+function ZoneDetailPanel({ machineName, zone, focusedPointId, onPointClick, onClose }) {
+  const dangerCount = zone.tags.filter((tag) => getSafetyState(tag).className === "danger").length;
+  const warningCount = zone.tags.filter((tag) => getSafetyState(tag).className === "warning").length;
+  const readyCount = zone.tags.filter((tag) => getSafetyState(tag).className === "safe").length;
 
   return (
-    <div className="machine-3d-view real-glb-view embedded-3d-map zone-wrap-3d-view">
-      <Canvas
-        className="machine-3d-canvas"
-        camera={{
-          position: modelSettings.cameraPosition,
-          fov: modelSettings.cameraFov || 28,
-        }}
+    <div className="studio-zone-detail-overlay" role="presentation" onClick={onClose}>
+      <section
+        className={`studio-zone-detail-card ${zone.state.className}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${zone.name} live details`}
+        onClick={(event) => event.stopPropagation()}
       >
-        <color attach="background" args={["#eef5ff"]} />
-        <ambientLight intensity={0.95} />
-        <hemisphereLight intensity={0.72} groundColor="#dbeafe" />
-        <directionalLight position={[4, 6, 5]} intensity={1.25} />
-        <directionalLight position={[-5, 3, -4]} intensity={0.38} />
+        <header className="studio-zone-detail-header">
+          <div>
+            <span>{machineName} · {zone.area || "Machine location"}</span>
+            <h2>{zone.name}</h2>
+          </div>
+          <div className="studio-zone-detail-header-actions">
+            <em className={zone.state.className}><i />{zone.state.label}</em>
+            <button type="button" onClick={onClose} aria-label="Close location details">×</button>
+          </div>
+        </header>
 
-        <Suspense fallback={null}>
-          <MachineModel
-            url={machine.modelUrl}
-            scale={modelSettings.scale}
-            position={modelSettings.position}
-            rotation={modelSettings.rotation}
-          />
-
-          <group name="machine-zone-overlays">
-            {zoneOverlays.map((zone) => (
-              <Machine3DZone
-                key={`3d-zone-${zone.id}`}
-                zone={zone}
-                map3d={zone.map3d}
-                isActive={
-                  selectedPoint?.type === "zone" && selectedPoint?.id === zone.id
-                }
-                onZoneClick={onZoneClick}
-              />
-            ))}
-          </group>
-        </Suspense>
-
-        <OrbitControls
-          makeDefault
-          enableDamping
-          dampingFactor={0.08}
-          enableRotate
-          enablePan
-          enableZoom
-          rotateSpeed={0.62}
-          zoomSpeed={0.72}
-          panSpeed={0.6}
-          target={modelSettings.controlsTarget}
-        />
-      </Canvas>
-    </div>
-  );
-}
-
-function Machine3DZone({ zone, map3d, isActive, onZoneClick }) {
-  const colors = get3DStatusColor(zone.state.className);
-  const labelOffset =
-    map3d.labelOffset || [0, (map3d.size?.[1] || 1) * 0.5 + 0.15, 0];
-
-  const opacity = isActive
-    ? map3d.activeOpacity || 0.28
-    : map3d.opacity || 0.16;
-
-  const zoneRefreshKey = JSON.stringify({
-    id: zone.id,
-    position: map3d.position,
-    size: map3d.size,
-    rotation: map3d.rotation,
-  });
-
-  return (
-    <group
-      key={zoneRefreshKey}
-      position={map3d.position}
-      rotation={map3d.rotation || [0, 0, 0]}
-    >
-      <mesh
-        castShadow
-        receiveShadow
-        renderOrder={20}
-        onPointerDown={(event) => {
-          event.stopPropagation();
-          onZoneClick(zone);
-        }}
-      >
-        <boxGeometry args={map3d.size} />
-        <meshStandardMaterial
-          color={colors.fill}
-          emissive={colors.emissive}
-          emissiveIntensity={isActive ? 0.22 : 0.12}
-          transparent
-          opacity={opacity}
-          roughness={0.48}
-          metalness={0.02}
-          depthWrite={false}
-        />
-        <Edges color={colors.edge} scale={1.001} threshold={15} />
-      </mesh>
-
-      <Billboard position={labelOffset} follow>
-        <group
-          onPointerDown={(event) => {
-            event.stopPropagation();
-            onZoneClick(zone);
-          }}
-        >
-          <CanvasTextLabel
-            text={zone.name}
-            width={map3d.labelWidth || 1}
-            height={map3d.labelHeight || 0.24}
-            background={colors.labelBg}
-          />
-        </group>
-      </Billboard>
-    </group>
-  );
-}
-
-
-function CanvasTextLabel({ text, width, height, background }) {
-  const texture = useMemo(() => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 512;
-    canvas.height = 128;
-
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    const radius = 18;
-    ctx.fillStyle = background || "#15803d";
-    ctx.beginPath();
-    ctx.moveTo(radius, 0);
-    ctx.lineTo(canvas.width - radius, 0);
-    ctx.quadraticCurveTo(canvas.width, 0, canvas.width, radius);
-    ctx.lineTo(canvas.width, canvas.height - radius);
-    ctx.quadraticCurveTo(canvas.width, canvas.height, canvas.width - radius, canvas.height);
-    ctx.lineTo(radius, canvas.height);
-    ctx.quadraticCurveTo(0, canvas.height, 0, canvas.height - radius);
-    ctx.lineTo(0, radius);
-    ctx.quadraticCurveTo(0, 0, radius, 0);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "900 46px Arial, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(String(text || ""), canvas.width / 2, canvas.height / 2 + 2);
-
-    const canvasTexture = new THREE.CanvasTexture(canvas);
-    canvasTexture.colorSpace = THREE.SRGBColorSpace;
-    canvasTexture.needsUpdate = true;
-
-    return canvasTexture;
-  }, [text, background]);
-
-  return (
-    <mesh renderOrder={21}>
-      <planeGeometry args={[width, height]} />
-      <meshBasicMaterial map={texture} transparent />
-    </mesh>
-  );
-}
-
-function MachineModel({ url, scale, position, rotation }) {
-  const { scene } = useGLTF(url);
-
-  return (
-    <primitive
-      object={scene}
-      scale={scale}
-      position={position}
-      rotation={rotation}
-      dispose={null}
-    />
-  );
-}
-
-useGLTF.preload("/models/mespack.glb");
-
-function FaceAttendanceModal({ machines, defaultMachineId, onClose, onConfirmed }) {
-  const [mode, setMode] = useState("menu");
-  const [adminAuthed, setAdminAuthed] = useState(false);
-  const [adminTab, setAdminTab] = useState("logs");
-  const [status, setStatus] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [stream, setStream] = useState(null);
-  const [lastRegister, setLastRegister] = useState(null);
-  const [adminPassword, setAdminPassword] = useState("");
-  const [adminLogs, setAdminLogs] = useState([]);
-  const [adminPeople, setAdminPeople] = useState([]);
-  const [verificationSummary, setVerificationSummary] = useState([]);
-  const [machineState, setMachineState] = useState(null);
-  const [filters, setFilters] = useState({ date: "", name: "", machine: "", department: "", shift: "" });
-  const [form, setForm] = useState({
-    person_name: "",
-    employee_id: "",
-    department: "",
-    role: "operator",
-    machine: defaultMachineId || machines?.[0]?.id || "mespack",
-    shift_code: "MORNING",
-  });
-
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const confirmRetryRef = useRef(null);
-
-  const machineOptions = machines?.length ? machines : [{ id: "mespack", name: "Mespack" }];
-  const selectedMachineName = machineOptions.find((m) => m.id === form.machine)?.name || form.machine;
-
-  const filteredLogs = adminLogs.filter((row) => {
-    const rowDate = row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : "";
-    const nameOk = !filters.name || String(row.person_name || "").toLowerCase().includes(filters.name.toLowerCase());
-    const deptOk = !filters.department || String(row.department || "").toLowerCase().includes(filters.department.toLowerCase());
-    const machineText = `${row.machine || ""} ${row.machine_name || ""}`.toLowerCase();
-    const machineOk = !filters.machine || machineText.includes(filters.machine.toLowerCase());
-    const shiftOk = !filters.shift || String(row.shift_code || "") === filters.shift;
-    const dateOk = !filters.date || rowDate === filters.date;
-    return nameOk && deptOk && machineOk && shiftOk && dateOk;
-  });
-
-  const filteredPeople = adminPeople.filter((row) => {
-    const nameOk = !filters.name || String(row.person_name || "").toLowerCase().includes(filters.name.toLowerCase());
-    const deptOk = !filters.department || String(row.department || "").toLowerCase().includes(filters.department.toLowerCase());
-    const machineText = `${row.machine || ""} ${row.machine_name || ""}`.toLowerCase();
-    const machineOk = !filters.machine || machineText.includes(filters.machine.toLowerCase());
-    const shiftOk = !filters.shift || String(row.shift_code || "") === filters.shift;
-    return nameOk && deptOk && machineOk && shiftOk;
-  });
-
-  const filteredVerificationSummary = verificationSummary.filter((row) => {
-    const nameOk = !filters.name || String(row.person_name || "").toLowerCase().includes(filters.name.toLowerCase());
-    const deptOk = !filters.department || String(row.department || "").toLowerCase().includes(filters.department.toLowerCase());
-    const machineText = `${row.machine || ""} ${row.machine_name || ""}`.toLowerCase();
-    const machineOk = !filters.machine || machineText.includes(filters.machine.toLowerCase());
-    const shiftOk = !filters.shift || String(row.shift_code || "") === filters.shift;
-    const dateOk = !filters.date || String(row.shift_date || "").slice(0, 10) === filters.date;
-    return nameOk && deptOk && machineOk && shiftOk && dateOk;
-  });
-
-  useEffect(() => {
-    return () => stopCamera();
-  }, []);
-
-  useEffect(() => {
-    if (mode !== "confirm" || !stream) return undefined;
-
-    window.clearTimeout(confirmRetryRef.current);
-    confirmRetryRef.current = window.setTimeout(() => {
-      handleConfirmCheck({ silent: true });
-    }, 1200);
-
-    return () => window.clearTimeout(confirmRetryRef.current);
-  }, [mode, stream]);
-
-  async function startCamera() {
-    setError("");
-    setStatus("Opening camera...");
-    try {
-      const nextStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      });
-      setStream(nextStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = nextStream;
-        await videoRef.current.play();
-      }
-      setStatus("Camera ready.");
-    } catch (err) {
-      setError(`Camera failed: ${err.message}`);
-      setStatus("");
-    }
-  }
-
-  function stopCamera() {
-    window.clearTimeout(confirmRetryRef.current);
-    if (stream) stream.getTracks().forEach((track) => track.stop());
-    setStream(null);
-  }
-
-  function resetToMenu() {
-    stopCamera();
-    setMode("menu");
-    setError("");
-    setStatus("");
-    setLastRegister(null);
-  }
-
-  function chooseMode(nextMode) {
-    setMode(nextMode);
-    setError("");
-    setStatus("");
-    setLastRegister(null);
-    if (nextMode === "confirm") {
-      setTimeout(startCamera, 80);
-    } else {
-      stopCamera();
-    }
-  }
-
-  function chooseAdminTab(nextTab) {
-    setAdminTab(nextTab);
-    setError("");
-    setStatus("");
-    setLastRegister(null);
-    if (nextTab === "register") {
-      setTimeout(startCamera, 80);
-    } else {
-      stopCamera();
-    }
-  }
-
-  function captureImage() {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas || !video.videoWidth || !video.videoHeight) {
-      throw new Error("Camera is not ready yet.");
-    }
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/jpeg", 0.92);
-  }
-
-  async function postJson(url, body) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || data.message || `Request failed ${res.status}`);
-    return data;
-  }
-
-  function validateOperatorFields() {
-    if (!form.person_name.trim()) {
-      setError("Enter the operator name first.");
-      return false;
-    }
-    if (!form.department.trim()) {
-      setError("Enter the department first.");
-      return false;
-    }
-    if (!form.shift_code) {
-      setError("Select the verification shift first.");
-      return false;
-    }
-    return true;
-  }
-
-  async function loadAdminData(password = adminPassword) {
-    const data = await postJson("/api/machine-check/admin/logs", { password });
-    setAdminLogs(data.logs || []);
-    setAdminPeople(data.people || []);
-    setVerificationSummary(data.verificationSummary || []);
-    setMachineState(data.machineState || null);
-    return data;
-  }
-
-  async function handleAdminEnter() {
-    setLoading(true);
-    setError("");
-    setStatus("Checking admin password...");
-    try {
-      const data = await loadAdminData(adminPassword);
-      setAdminAuthed(true);
-      setAdminTab("logs");
-      setStatus(`Loaded ${(data.logs || []).length} confirmations.`);
-    } catch (err) {
-      setError(err.message);
-      setStatus("");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleRegister() {
-    if (!validateOperatorFields()) return;
-    setLoading(true);
-    setError("");
-    setStatus("Registering face...");
-    try {
-      const image = captureImage();
-      const data = await postJson("/api/face/register", {
-        ...form,
-        machine_name: selectedMachineName,
-        image,
-      });
-      setLastRegister(data);
-      setStatus(`Registered ${form.person_name}.`);
-      stopCamera();
-      await loadAdminData(adminPassword);
-    } catch (err) {
-      setError(err.message);
-      setStatus("");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleConfirmCheck(options = {}) {
-    const { silent = false } = options;
-    if (loading) return;
-    setLoading(true);
-    if (!silent) {
-      setError("");
-      setStatus("Scanning...");
-    }
-    try {
-      const image = captureImage();
-      const data = await postJson("/api/machine-check/confirm", {
-        machine: defaultMachineId || form.machine,
-        machine_name: selectedMachineName,
-        image,
-      });
-      stopCamera();
-      onClose();
-      const verifyLabel = data.verification?.label || "Machine check saved";
-      onConfirmed?.(`${data.log?.person_name || "Confirmed"}: ${verifyLabel}`);
-    } catch (err) {
-      if (silent) {
-        window.clearTimeout(confirmRetryRef.current);
-        confirmRetryRef.current = window.setTimeout(() => {
-          handleConfirmCheck({ silent: true });
-        }, 1800);
-      } else {
-        setError(err.message);
-        setStatus("");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleUnregister(row) {
-    if (!row?.face_api_id && !row?.face_img_name) return;
-    setLoading(true);
-    setError("");
-    setStatus("Deactivating face...");
-    try {
-      const data = await postJson("/api/face/unregister", {
-        password: adminPassword,
-        face_api_id: row.face_api_id || undefined,
-        face_img_name: row.face_img_name || undefined,
-      });
-      setStatus(data.message || "Face deactivated.");
-      await loadAdminData(adminPassword);
-    } catch (err) {
-      setError(err.message);
-      setStatus("");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div className="face-modal-backdrop" onClick={onClose}>
-      <div className={`face-modal ${mode === "menu" ? "face-modal-menu" : ""} ${mode === "confirm" ? "face-modal-confirm-only" : ""} ${mode === "admin" && adminAuthed ? "face-modal-admin" : ""} ${mode === "admin" && !adminAuthed ? "face-modal-admin-auth" : ""}`} onClick={(e) => e.stopPropagation()}>
-        <div className={`face-modal-header ${mode === "confirm" ? "confirm-only-header" : ""}`}>
-          {mode !== "confirm" && (
-            <div>
-              {!(mode === "admin" && !adminAuthed) && <div className="face-modal-kicker">Machine Check</div>}
-              <div className="face-modal-title">
-                {mode === "admin" && "Admin"}
-              </div>
-            </div>
-          )}
-          <button className="face-modal-close" onClick={onClose}>×</button>
+        <div className="studio-zone-detail-metrics" aria-label="Location summary">
+          <div><strong>{zone.tags.length}</strong><span>Monitored</span></div>
+          <div className={dangerCount ? "danger" : ""}><strong>{dangerCount}</strong><span>Critical</span></div>
+          <div className={warningCount ? "warning" : ""}><strong>{warningCount}</strong><span>Warning</span></div>
+          <div className="safe"><strong>{readyCount}</strong><span>Ready</span></div>
         </div>
 
-        {mode === "menu" && (
-          <div className="face-action-grid two">
-            <button className="face-action-card" onClick={() => chooseMode("confirm")}>
-              <strong>Confirmation</strong>
-              <span>Open the live facial confirmation camera.</span>
-            </button>
-            <button className="face-action-card" onClick={() => chooseMode("admin")}>
-              <strong>Admin</strong>
-              <span>Manage confirmations and registered operators.</span>
-            </button>
+        <div className="studio-zone-detail-section-heading">
+          <div>
+            <strong>Live machine points</strong>
+            <span>Alerts are shown first</span>
           </div>
-        )}
+          {(dangerCount > 0 || warningCount > 0) && (
+            <small>{dangerCount + warningCount} need attention</small>
+          )}
+        </div>
 
-        {mode === "confirm" && (
-          <div className="face-confirm-only-shell">
-            <div className="face-camera-card clean-confirm-camera camera-only-card">
-              <video ref={videoRef} className="face-camera-video" playsInline muted />
-              <canvas ref={canvasRef} style={{ display: "none" }} />
-            </div>
-          </div>
-        )}
+        <div className="studio-zone-detail-list">
+          {zone.tags.map((tag) => {
+            const state = getSafetyState(tag);
+            const isFocused = Number(focusedPointId) === Number(tag.id);
+            const displayStates = tag.interpretation?.states || [
+              { label: tag.openClose, className: tag.openClose === "OPEN" ? "warning" : "safe", color: null },
+              { label: tag.lockState, className: tag.lockState === "UNLOCK" ? "danger" : "safe", color: null },
+            ];
 
-        {mode === "admin" && !adminAuthed && (
-          <div className="face-admin-auth-card clean-admin-auth-card">
-            <div className="face-form-grid single admin-auth-grid clean-admin-auth-grid">
-              <label>
-                Admin Password
-                <input
-                  type="password"
-                  value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                  placeholder="Enter admin password"
-                  onKeyDown={(e) => e.key === "Enter" && handleAdminEnter()}
-                  autoFocus
-                />
-              </label>
-            </div>
-            <div className="face-modal-actions clean-admin-actions">
-              <button className="face-secondary-btn" onClick={resetToMenu}>Back</button>
-            </div>
-          </div>
-        )}
-
-        {mode === "admin" && adminAuthed && (
-          <div className={`face-admin-content ${adminTab === "logs" ? "admin-logs" : "admin-register"}`}>
-            <div className="face-admin-tabs">
-              <button className={adminTab === "logs" ? "active" : ""} onClick={() => chooseAdminTab("logs")}>Logs</button>
-              <button className={adminTab === "register" ? "active" : ""} onClick={() => chooseAdminTab("register")}>Register</button>
-            </div>
-
-            {adminTab === "logs" && (
-              <div className="face-admin-panel">
-                <div className="face-filter-grid face-filter-grid-logs">
-                  <label>Date<input type="date" value={filters.date} onChange={(e) => setFilters((p) => ({ ...p, date: e.target.value }))} /></label>
-                  <label>Shift<select value={filters.shift} onChange={(e) => setFilters((p) => ({ ...p, shift: e.target.value }))}><option value="">All Shifts</option>{SHIFT_OPTIONS.map((shift) => <option key={shift.value} value={shift.value}>{shift.label}</option>)}</select></label>
-                  <label>Name<input value={filters.name} onChange={(e) => setFilters((p) => ({ ...p, name: e.target.value }))} placeholder="Filter name" /></label>
-                  <label>Machine<input value={filters.machine} onChange={(e) => setFilters((p) => ({ ...p, machine: e.target.value }))} placeholder="Filter machine" /></label>
-                  <label>Department<input value={filters.department} onChange={(e) => setFilters((p) => ({ ...p, department: e.target.value }))} placeholder="Filter department" /></label>
-                </div>
-
-                <div className="verification-summary-card">
-                  <div className="verification-summary-head">
-                    <strong>Shift Verification</strong>
-                    <span>{machineState?.label || "Waiting for machine state"}</span>
-                  </div>
-                  <div className="verification-summary-list">
-                    {filteredVerificationSummary.length ? filteredVerificationSummary.map((row) => (
-                      <div className="verification-summary-row" key={`${row.person_id}-${row.shift_code}-${row.shift_date}`}>
-                        <span>{row.person_name}</span>
-                        <span>{getShiftLabel(row.shift_code)}</span>
-                        <span className={`verification-pill ${getVerificationPillClass(row.status)}`}>{formatStatusLabel(row.status)}</span>
-                      </div>
-                    )) : <div className="verification-empty">No registered active people for this filter.</div>}
-                  </div>
-                </div>
-
-                <div className="face-admin-table-wrap polished-table-wrap logs-table-wrap">
-                  <table className="face-admin-table">
-                    <thead>
-                      <tr>
-                        <th>Timestamp</th>
-                        <th>Name</th>
-                        <th>Department</th>
-                        <th>Machine</th>
-                        <th>Shift</th>
-                        <th>Status</th>
-                        <th>Employee</th>
-                        <th>Role</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredLogs.map((row) => (
-                        <tr key={row.id}>
-                          <td>{formatDateTime(row.created_at)}</td>
-                          <td>{row.person_name}</td>
-                          <td>{row.department || "-"}</td>
-                          <td>{row.machine_name || row.machine || "-"}</td>
-                          <td>{getShiftLabel(row.shift_code)}</td>
-                          <td><span className={`verification-pill ${getVerificationPillClass(row.confirmation_status)}`}>{formatStatusLabel(row.confirmation_status)}</span></td>
-                          <td>{row.employee_id || "-"}</td>
-                          <td>{row.role || "-"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {adminTab === "register" && (
-              <div className="face-register-layout">
-                <div className="face-register-pane">
-                  <div className="face-register-pane-title">Register New Face</div>
-                  <div className="face-form-grid register-grid">
-                    <label>Operator Name<input value={form.person_name} onChange={(e) => setForm((p) => ({ ...p, person_name: e.target.value }))} placeholder="e.g. Justin" /></label>
-                    <label>Employee ID<input value={form.employee_id} onChange={(e) => setForm((p) => ({ ...p, employee_id: e.target.value }))} placeholder="Optional" /></label>
-                    <label>Department<input value={form.department} onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))} placeholder="e.g. Engineering" /></label>
-                    <label>Role<select value={form.role} onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}><option value="operator">Operator</option><option value="technician">Technician</option><option value="engineer">Engineer</option><option value="admin">Admin</option></select></label>
-                    <label>Machine<select value={form.machine} onChange={(e) => setForm((p) => ({ ...p, machine: e.target.value }))}>{machineOptions.map((machine) => <option key={machine.id} value={machine.id}>{machine.name}</option>)}</select></label>
-                    <label>Shift<select value={form.shift_code} onChange={(e) => setForm((p) => ({ ...p, shift_code: e.target.value }))}>{SHIFT_OPTIONS.map((shift) => <option key={shift.value} value={shift.value}>{shift.label}</option>)}</select></label>
-                  </div>
-
-                  <div className="face-camera-card register-camera">
-                    <video ref={videoRef} className="face-camera-video" playsInline muted />
-                    <canvas ref={canvasRef} style={{ display: "none" }} />
-                  </div>
-
-                  <div className="face-modal-actions compact-actions">
-                    {!stream && <button className="face-secondary-btn" onClick={startCamera}>Open Camera</button>}
-                    <button className="face-primary-btn" onClick={handleRegister} disabled={loading || !stream}>
-                      {loading ? "Registering..." : "Register Face"}
-                    </button>
-                    <button className="face-secondary-btn" onClick={() => loadAdminData(adminPassword)} disabled={loading}>Refresh</button>
-                  </div>
-
-                  {lastRegister && (
-                    <div className="face-result-card register-result-card">
-                      <strong>Registered Successfully</strong>
-                      <span>Name: {lastRegister.operator?.person_name ?? form.person_name}</span>
-                      <span>Department: {lastRegister.operator?.department ?? form.department}</span>
-                      <span>Machine: {lastRegister.operator?.machine_name ?? selectedMachineName}</span>
-                      <span>Shift: {getShiftLabel(lastRegister.operator?.shift_code ?? form.shift_code)}</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="face-register-list">
-                  <div className="face-admin-title">Registered Faces</div>
-                  <div className="face-admin-table-wrap polished-table-wrap register-table-wrap">
-                    <table className="face-admin-table">
-                      <thead>
-                        <tr>
-                          <th>Name</th>
-                          <th>Department</th>
-                          <th>Machine</th>
-                          <th>Shift</th>
-                          <th>Employee</th>
-                          <th>Role</th>
-                          <th>Status</th>
-                          <th>Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredPeople.map((row) => (
-                          <tr key={row.id}>
-                            <td>{row.person_name}</td>
-                            <td>{row.department || "-"}</td>
-                            <td>{row.machine_name || row.machine || "-"}</td>
-                            <td>{getShiftLabel(row.shift_code)}</td>
-                            <td>{row.employee_id || "-"}</td>
-                            <td>{row.role || "-"}</td>
-                            <td><span className={`face-status-pill ${row.is_active ? "active" : "inactive"}`}>{row.is_active ? "Active" : "Inactive"}</span></td>
-                            <td>
-                              <button className="face-table-action" onClick={() => handleUnregister(row)} disabled={loading || !row.is_active}>
-                                {row.is_active ? "Remove" : "Inactive"}
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {mode !== "confirm" && mode !== "admin" && status && <div className="face-status success">{status}</div>}
-        {mode !== "confirm" && error && <div className="face-status error">{error}</div>}
-      </div>
+            return (
+              <button
+                type="button"
+                className={`studio-zone-detail-row ${state.className} ${isFocused ? "focused" : ""}`}
+                style={{ "--point-color": state.color || undefined }}
+                key={tag.id}
+                onClick={() => onPointClick(tag)}
+              >
+                <i />
+                <span>
+                  <strong>{tag.name}</strong>
+                  <small>{tag.area || zone.area}</small>
+                </span>
+                <span className="studio-zone-detail-values">
+                  {displayStates.map((displayState, index) => (
+                    <em
+                      className={displayState.className}
+                      style={{ "--value-color": displayState.color || undefined }}
+                      key={`${tag.id}-${index}`}
+                    >
+                      {displayState.label}
+                    </em>
+                  ))}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }
 
-function formatDateTime(value) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString();
-}
-
-function SummaryStat({ value, label, variant }) {
+function ZoneStatusRail({ zones, selectedPoint, onZoneClick, onPointClick, side }) {
   return (
-    <div className={`summary-stat ${variant || ""}`}>
-      <div className="summary-value">{value}</div>
-      <div className="summary-label">{label}</div>
-    </div>
+    <aside
+      className={`studio-zone-rail ${side} ${zones.length > 2 ? "scrolling" : ""}`}
+      style={{ "--rail-rows": Math.max(1, zones.length) }}
+      aria-label={`${side} machine sections`}
+    >
+      {zones.map((zone) => {
+        const issueCount = zone.tags.filter((tag) => getSafetyState(tag).className !== "safe").length;
+        const zoneSelected = selectedPoint?.type === "zone" && selectedPoint?.id === zone.id;
+
+        return (
+          <section className={`studio-zone-card ${zone.state.className} ${zoneSelected ? "active" : ""}`} key={zone.id}>
+            <button className="studio-zone-heading" type="button" onClick={() => onZoneClick(zone)}>
+              <span>
+                <strong>{zone.name}</strong>
+                <small>{zone.tags.length} points</small>
+              </span>
+              <em className={zone.state.className}>{issueCount ? `${issueCount} alert${issueCount === 1 ? "" : "s"}` : "Ready"}</em>
+            </button>
+
+            <div className="studio-zone-points">
+              {zone.tags.map((tag) => {
+                const state = getSafetyState(tag);
+                const isSelected = Number(selectedPoint?.focusedPointId) === Number(tag.id);
+                const stateSummary = tag.interpretation?.states?.map((item) => item.label).join(" · ")
+                  || `${tag.openClose} · ${tag.lockState}`;
+                return (
+                  <button
+                    type="button"
+                    className={`studio-point-row ${state.className} ${isSelected ? "active" : ""}`}
+                    style={{ "--point-color": state.color || undefined }}
+                    key={tag.id}
+                    onClick={() => onPointClick(tag)}
+                    title={`${tag.name}: ${stateSummary}`}
+                  >
+                    <i />
+                    <span>{tag.name}</span>
+                    <small>{stateSummary}</small>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+    </aside>
   );
 }
 
-function DetailItem({ label, value, wide }) {
-  return (
-    <div className={`detail-item ${wide ? "wide" : ""}`}>
-      <div className="detail-label">{label}</div>
-      <div className="detail-value">{value}</div>
-    </div>
-  );
-}
 
 /* =========================================================
    17 - STATUS LOGIC
@@ -1582,6 +2147,14 @@ function DetailItem({ label, value, wide }) {
 ========================================================= */
 
 function getSafetyState(point) {
+  if (point.interpretation?.overall) {
+    return {
+      label: point.interpretation.overall.label,
+      className: point.interpretation.overall.className,
+      color: point.interpretation.overall.color,
+    };
+  }
+
   const openClose = point.openClose || (point.guardOpen ? "OPEN" : "CLOSE");
   const lockState = point.lockState || (point.interlockOk ? "LOCK" : "UNLOCK");
   const isClosed = openClose === "CLOSE";
@@ -1616,22 +2189,25 @@ function getSafetyState(point) {
 
 function getZoneState(tags) {
   const states = tags.map((tag) => getSafetyState(tag));
-  const hasInterlock = states.some((state) => state.className === "danger");
-  const hasGuardOpen = states.some((state) => state.className === "warning");
+  const hasDanger = states.some((state) => state.className === "danger");
+  const hasWarning = states.some((state) => state.className === "warning");
+  const hasNeutral = states.some((state) => state.className === "neutral");
 
-  if (hasInterlock) {
+  if (hasDanger) {
     return {
-      label: "Unlocked",
+      label: "Critical",
       className: "danger",
     };
   }
 
-  if (hasGuardOpen) {
+  if (hasWarning) {
     return {
-      label: "Open",
+      label: "Attention",
       className: "warning",
     };
   }
+
+  if (hasNeutral) return { label: "Monitoring", className: "neutral" };
 
   return {
     label: "Ready",
@@ -1639,43 +2215,6 @@ function getZoneState(tags) {
   };
 }
 
-
-function get3DStatusColor(className) {
-  if (className === "danger") {
-    return {
-      fill: "#ef4444",
-      emissive: "#991b1b",
-      edge: "#b91c1c",
-      labelBg: "#b91c1c",
-    };
-  }
-
-  if (className === "warning") {
-    return {
-      fill: "#facc15",
-      emissive: "#a16207",
-      edge: "#ca8a04",
-      labelBg: "#b38706",
-    };
-  }
-
-  return {
-    fill: "#22c55e",
-    emissive: "#166534",
-    edge: "#15803d",
-    labelBg: "#15803d",
-  };
-}
-
-/* =========================================================
-   18 - UTILS
-========================================================= */
-
-function getStatusClass(status) {
-  if (["READY", "RUNNING"].includes(status)) return "running";
-  if (["UNLOCKED", "OPEN", "DIAGNOSTIC", "GUARD OPEN", "STOPPED"].includes(status)) return "stopped";
-  return "waiting";
-}
 
 function normalizeOpenCloseState(value) {
   if (value === undefined || value === null || value === "") return null;
@@ -1695,32 +2234,6 @@ function normalizeLockState(value) {
   if (["lock", "locked", "interlock", "interlock ok", "healthy", "ok", "1", "true", "on", "safe", "ready"].includes(text)) return "LOCK";
   if (["unlock", "unlocked", "interlock fault", "fault", "diagnostic", "trip", "0", "false", "off"].includes(text)) return "UNLOCK";
   return null;
-}
-
-function getShiftLabel(value) {
-  const shift = SHIFT_OPTIONS.find((item) => item.value === String(value || "").toUpperCase());
-  return shift?.label || "-";
-}
-
-function formatStatusLabel(value) {
-  if (!value) return "-";
-  const text = String(value).toUpperCase();
-  if (text === "NOT_REQUIRED") return "Not Required";
-  if (text === "NO_SHIFT") return "No Shift";
-  return text
-    .toLowerCase()
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function getVerificationPillClass(value) {
-  const text = String(value || "").toUpperCase();
-  if (["VERIFIED", "CONFIRMED"].includes(text)) return "ok";
-  if (["NOT_REQUIRED", "UPCOMING"].includes(text)) return "skip";
-  if (["PENDING", "EARLY"].includes(text)) return "warn";
-  if (["MISSED", "LATE", "NO_SHIFT"].includes(text)) return "bad";
-  return "skip";
 }
 
 function toBool(value) {

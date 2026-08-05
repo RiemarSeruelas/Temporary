@@ -1,6 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
-import machineImage from "./assets/machine.png";
 import { AdminHome, ConfirmationModal, OperatorAdminPage } from "./OperatorExperience";
 
 const Machine3DView = lazy(() => import("./Machine3DView"));
@@ -27,170 +26,8 @@ console.log(
      interlockOk = true means healthy
 ========================================================= */
 
-const MACHINE_POINTS = [
-  { id: 1, name: "Unwinder Door 1", area: "Unwinder Section", guardOpen: false, interlockOk: true, guardTag: "SFI_Door1", interlockTag: "I_Door1Diagnostic" },
-  { id: 2, name: "Unwinder Door 2", area: "Unwinder Section", guardOpen: false, interlockOk: true, guardTag: "SFI_Door2", interlockTag: "I_Door2Diagnostic" },
-  { id: 3, name: "Machine Door 3", area: "Main Machine", guardOpen: false, interlockOk: true, guardTag: "SFI_Door3", interlockTag: "I_Door3Diagnostic" },
-  { id: 4, name: "Machine Door 4", area: "Main Machine", guardOpen: false, interlockOk: true, guardTag: "SFI_Door4", interlockTag: "I_Door4Diagnostic" },
-  { id: 5, name: "Machine Door 5", area: "Main Machine", guardOpen: false, interlockOk: true, guardTag: "SFI_Door5", interlockTag: "I_Door5Diagnostic" },
-  { id: 6, name: "Machine Door 6", area: "Main Machine", guardOpen: false, interlockOk: true, guardTag: "SFI_Door6", interlockTag: "I_Door6Diagnostic" },
-  { id: 7, name: "Machine Door 7", area: "Main Machine", guardOpen: false, interlockOk: true, guardTag: "SFI_Door7", interlockTag: "I_Door7Diagnostic" },
-  { id: 8, name: "Machine Door 8", area: "Main Machine", guardOpen: false, interlockOk: true, guardTag: "SFI_Door8", interlockTag: "I_Door8Diagnostic" },
-  { id: 9, name: "Machine Door 9", area: "Main Machine", guardOpen: false, interlockOk: true, guardTag: "SFI_Door9", interlockTag: "I_Door9Diagnostic" },
-  { id: 10, name: "Machine Door 10", area: "Main Machine", guardOpen: false, interlockOk: true, guardTag: "SFI_Door10", interlockTag: "I_Door10Diagnostic" },
-  { id: 11, name: "Machine Door 11", area: "Main Machine", guardOpen: false, interlockOk: true, guardTag: "SFI_Door11", interlockTag: "I_Door11Diagnostic" },
-  { id: 12, name: "Machine Door 12", area: "Main Machine", guardOpen: true, interlockOk: true, guardTag: "SFI_Door12", interlockTag: "I_Door12Diagnostic" },
-  { id: 13, name: "Unwinder Door 13", area: "Unwinder Section", guardOpen: true, interlockOk: true, guardTag: "SFI_Door13", interlockTag: "I_Door13Diagnostic" },
-  { id: 14, name: "Unwinder Door 14", area: "Unwinder Section", guardOpen: false, interlockOk: true, guardTag: "SFI_Door14", interlockTag: "I_Door14Diagnostic" },
-  { id: 15, name: "Unwinder Door 15", area: "Unwinder Section", guardOpen: false, interlockOk: false, guardTag: "SFI_Door15", interlockTag: "I_Door15Diagnostic" },
-  { id: 16, name: "Unwinder Door 16", area: "Unwinder Section", guardOpen: false, interlockOk: false, guardTag: "SFI_Door16", interlockTag: "I_Door16Diagnostic" },
-  { id: 17, name: "Unwinder Door 17", area: "Unwinder Section", guardOpen: false, interlockOk: true, guardTag: "SFI_Door17", interlockTag: "I_Door17Diagnostic" },
-  { id: 18, name: "Unwinder Door 18", area: "Unwinder Section", guardOpen: false, interlockOk: true, guardTag: "SFI_Door18", interlockTag: "I_Door18Diagnostic" },
-  { id: 19, name: "Unwinder Door 19", area: "Unwinder Section", guardOpen: false, interlockOk: true, guardTag: "SFI_Door19", interlockTag: "I_Door19Diagnostic" },
-  { id: 20, name: "Unwinder Door 20", area: "Unwinder Section", guardOpen: false, interlockOk: true, guardTag: "SFI_Door20", interlockTag: "I_Door20Diagnostic" },
-  { id: 21, name: "Machine Door 21", area: "Main Machine", guardOpen: false, interlockOk: true, guardTag: "SFI_Door21", interlockTag: "I_Door21Diagnostic" },
-  { id: 22, name: "Door 22", area: "Machine Guarding", guardOpen: false, interlockOk: true, guardTag: "SFI_Door22", interlockTag: "I_Door22Diagnostic" },
-  { id: 23, name: "Door 23", area: "Machine Guarding", guardOpen: false, interlockOk: true, guardTag: "SFI_Door23", interlockTag: "I_Door23Diagnostic" },
-  { id: 24, name: "Door 24", area: "Machine Guarding", guardOpen: false, interlockOk: true, guardTag: "SFI_Door24", interlockTag: "I_Door24Diagnostic" },
-  { id: 25, name: "Door 25", area: "Machine Guarding", guardOpen: false, interlockOk: true, guardTag: "SFI_Door25", interlockTag: "I_Door25Diagnostic" },
-  { id: 26, name: "Door 26", area: "Machine Guarding", guardOpen: false, interlockOk: true, guardTag: "SFI_Door26", interlockTag: "I_Door26Diagnostic" },
-  { id: 27, name: "Door 27", area: "Machine Guarding", guardOpen: false, interlockOk: true, guardTag: "SFI_Door27", interlockTag: "I_Door27Diagnostic" },
-  { id: 28, name: "Door 28", area: "Machine Guarding", guardOpen: false, interlockOk: true, guardTag: "SFI_Door28", interlockTag: "I_Door28Diagnostic" },
-  { id: 29, name: "Door 29", area: "Machine Guarding", guardOpen: false, interlockOk: true, guardTag: "SFI_Door29", interlockTag: "I_Door29Diagnostic" },
-  { id: 30, name: "Door 30", area: "Machine Guarding", guardOpen: false, interlockOk: true, guardTag: "SFI_Door30", interlockTag: "I_Door30Diagnostic" },
-  { id: 31, name: "Door 31", area: "Machine Guarding", guardOpen: false, interlockOk: true, guardTag: "SFI_Door31", interlockTag: "I_Door31Diagnostic" },
-  { id: 32, name: "Door 32", area: "Machine Guarding", guardOpen: false, interlockOk: true, guardTag: "SFI_Door32", interlockTag: "I_Door32Diagnostic" },
-  { id: 33, name: "Door 33", area: "Machine Guarding", guardOpen: false, interlockOk: true, guardTag: "SFI_Door33", interlockTag: "I_Door33Diagnostic" }, 
-  { id: 34, name: "Unwinder Door 34", area: "Unwinder Section", guardOpen: false, interlockOk: true, guardTag: "SFI_Door34", interlockTag: "I_Door34Diagnostic" },
-  { id: 35, name: "Unwinder Door 35", area: "Unwinder Section", guardOpen: false, interlockOk: true, guardTag: "SFI_Door35", interlockTag: "I_Door35Diagnostic" },
-  { id: 36, name: "Unwinder Door 36", area: "Unwinder Section", guardOpen: false, interlockOk: true, guardTag: "SFI_Door36", interlockTag: "I_Door36Diagnostic" },
-  { id: 37, name: "Unwinder Door 37", area: "Unwinder Section", guardOpen: false, interlockOk: true, guardTag: "SFI_Door37", interlockTag: "I_Door37Diagnostic" },
-  { id: 38, name: "Unwinder Door 38", area: "Unwinder Section", guardOpen: false, interlockOk: true, guardTag: "SFI_Door38", interlockTag: "I_Door38Diagnostic" },
-  { id: 39, name: "Unwinder Door 39", area: "Unwinder Section", guardOpen: false, interlockOk: true, guardTag: "SFI_Door39", interlockTag: "I_Door39Diagnostic" },
-];
-
-/* =========================================================
-   02 - MACHINE SVG ZONES
-   These are the clickable colored polygon areas on the machine.
-========================================================= */
-
-const MACHINE_ZONES = [
-  {
-    id: "zone-infeed",
-    name: "Infeed",
-    area: "Infeed Section",
-    points: "15,62 27,55 33,64 33,83 20,90 15, 82",
-    labelX: "18%",
-    labelY: "73%",
-    zoomScale: 2.45,
-    tagIds: [1, 2, 3, 39, 38, 37, 36, 35, 34],
-  }, 
-  {
-    id: "zone-wrapper",
-    name: "Wrapping",
-    area: "Wrapping Section",
-    points: "35,56 56,45 60,50 60,66 38,79 38,60",
-    labelX: "44%",
-    labelY: "63%",
-    zoomScale: 2.1,
-    tagIds: [4, 5, 6, 7, 8, 9, 33, 32, 31, 30, 29, 28],
-  },
-  {
-    id: "zone-main",
-    name: "Main Machine",
-    area: "Main Machine",
-    points: "56,45 74,34 77,40 77,57 60,65 60,50",
-    labelX: "70%",
-    labelY: "55%",
-    zoomScale: 2,
-    tagIds: [10, 11, 12, 13, 27, 26, 25, 24],
-  },
-   {
-    id: "zone-center",
-    name: "Center Guarding",
-    area: "Center Guarding",
-    points: "74,34 88.3,26 93,30 93,48 77,57 77,40",
-    labelX: "87%",
-    labelY: "49%",
-    zoomScale: 2.15,
-    tagIds: [14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
-  }, 
-];
-
-
-
-/* =========================================================
-   03 - 3D ZONE WRAP SETTINGS
-   These are the 3D wrapped areas that sit on top of the GLB.
-
-   Edit these manually to map each colored area around the machine:
-     position = [left/right, up/down, front/back]
-     size     = [width, height, depth]
-     rotation = [x, y, z] in radians
-     labelOffset = move the floating label relative to the box center
-
-   Tips:
-   - start by fixing position first
-   - then adjust size so the colored box wraps the section
-   - only use rotation if the box needs to tilt with the machine section
-========================================================= */
-
-const MACHINE_3D_ZONE_MAPS = [
-  {
-    id: "zone-infeed",
-    position: [-1.54, -0.23, -0.18],
-    size: [0.67, 0.54, 0.64],
-    rotation: [0, 0, 0],
-    labelOffset: [0, 1000.5, 0],
-    labelWidth: 0.92,
-    labelHeight: 0.24,
-    labelTextSize: 0.13,
-    opacity: 0.50,
-    activeOpacity: 0.26,
-  }, 
-  {
-    id: "zone-wrapper",
-    position: [-0.25, -0.27, -0.17],
-    size: [1.26, 0.50, 0.35],
-    rotation: [0, 0, 0],
-    labelOffset: [0, 100.84, 0],
-    labelWidth: 1.05,
-    labelHeight: 0.24,
-    labelTextSize: 0.13,
-    opacity: 0.50,
-    activeOpacity: 0.26,
-  }, 
-  {
-    id: "zone-main",
-    position: [0.83, -0.27, -0.18],
-    size: [0.86, 0.50, 0.37],
-    rotation: [0, 0, 0],
-    labelOffset: [0, 100.86, 0],
-    labelWidth: 1.20,
-    labelHeight: 0.24,
-    labelTextSize: 0.13,
-    opacity: 0.50,
-    activeOpacity: 0.26,
-  }, 
-  {
-    id: "zone-center",
-    position: [1.73, -0.27, -0.17],
-    size: [0.97, 0.50, 0.35],
-    rotation: [0, 0, 0],
-    labelOffset: [0, 100.02, 0],
-    labelWidth: 1.45,
-    labelHeight: 0.24,
-    labelTextSize: 0.13,
-    opacity: 0.50,
-    activeOpacity: 0.26,
-  },
-  
-];
-
-/* =========================================================
-   04 - 3D MODEL VIEW SETTINGS
-   Use this when you want to zoom/resize/rotate the whole GLB.
-========================================================= */
+/* Machine points, segments, images, and 3D models now come only from the API.
+   No sample runtime machine data is bundled in the frontend. */
 
 const MACHINE_3D_MODEL_SETTINGS = {
   // Higher number = bigger model.
@@ -209,34 +46,6 @@ const MACHINE_3D_MODEL_SETTINGS = {
   // Orbit center. Adjust if the rotation point feels off.
   controlsTarget: [0, 0.2, 0],
 
-};
-
-const MACHINE_CONFIGS = {
-  mespack: {
-    id: "mespack",
-    name: "Mespack",
-    title: "Mespack",
-    subtitle: "Real-time guard and interlock status",
-    apiUrl: "/api/data",
-    image: machineImage,
-    points: MACHINE_POINTS,
-    zones: MACHINE_ZONES,
-    modelUrl: "/models/mespack.glb",
-    modelZones: MACHINE_3D_ZONE_MAPS,
-    modelSettings: MACHINE_3D_MODEL_SETTINGS,
-  },
-  /* http://localhost:5000/data */
-
-  /* machine2: {
-    id: "machine2",
-    name: "Machine 2",
-    title: "Machine 2 Command Center",
-    subtitle: "Real-time machine status monitoring",
-    apiUrl: "/api/data-machine2",
-    image: machineImage,
-    points: MACHINE_POINTS,
-    zones: MACHINE_ZONES,
-  }, */
 };
 
 const DEFAULT_MACHINE_RECORD = {
@@ -325,7 +134,7 @@ export default function App() {
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [activePage, setActivePage] = useState("dashboard");
-  const [machineCatalog, setMachineCatalog] = useState([DEFAULT_MACHINE_RECORD]);
+  const [machineCatalog, setMachineCatalog] = useState([]);
   const [machinesLoading, setMachinesLoading] = useState(true);
   const [theme, setTheme] = useState(() => localStorage.getItem("mespack-theme") || "dark");
   const [machineEditorOpen, setMachineEditorOpen] = useState(false);
@@ -341,12 +150,12 @@ export default function App() {
       const response = await fetch("/api/machines");
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Unable to load machines.");
-      const nextMachines = data.machines?.length ? data.machines : [DEFAULT_MACHINE_RECORD];
+      const nextMachines = Array.isArray(data.machines) ? data.machines : [];
       setMachineCatalog(nextMachines);
       return nextMachines;
     } catch {
-      setMachineCatalog([DEFAULT_MACHINE_RECORD]);
-      return [DEFAULT_MACHINE_RECORD];
+      setMachineCatalog([]);
+      return [];
     } finally {
       setMachinesLoading(false);
     }
@@ -549,11 +358,17 @@ function editorDraftFromMachine(machine) {
     is_active: machine.is_active !== false,
     config_revision: Number(machine.config_revision || 1),
     data_source: { ...newSource(machine.id), ...(machine.data_source || {}) },
-    imagePreview: machine.image?.url || machineImage,
+    imagePreview: machine.image?.url || "",
     image_base64: "",
     image_mime_type: machine.image?.mime_type || "image/png",
     image_width: machine.image?.original_width || null,
     image_height: machine.image?.original_height || null,
+    modelPreviewUrl: machine.model?.url || machine.model_url || "",
+    model_base64: "",
+    model_mime_type: machine.model?.mime_type || "model/gltf-binary",
+    model_file_name: machine.model?.file_name || "",
+    model_size_bytes: machine.model?.size_bytes || null,
+    remove_model: false,
     segments: (machine.segments || []).map((segment) => ({
       ...segment,
       polygon_points: Array.isArray(segment.polygon_points) ? segment.polygon_points : [],
@@ -611,6 +426,16 @@ function canonicalIncomingValue(value) {
 }
 
 function interpretIncomingValue(rawValue, channelRules, fallback) {
+  if (rawValue === undefined || rawValue === null || rawValue === "") {
+    return {
+      rawValue,
+      rawLabel: "No Data",
+      label: "No Data",
+      className: "neutral",
+      color: "#64748b",
+      matched: false,
+    };
+  }
   const canonicalValue = canonicalIncomingValue(rawValue);
   const matchedRule = (Array.isArray(channelRules) ? channelRules : []).find((rule) => (
     canonicalIncomingValue(rule.value) === canonicalValue
@@ -618,8 +443,8 @@ function interpretIncomingValue(rawValue, channelRules, fallback) {
   const resolved = matchedRule || fallback || DEFAULT_POINT_VALUE_RULES.fallback;
   return {
     rawValue,
-    rawLabel: rawValue === undefined ? "No data" : String(rawValue),
-    label: String(resolved.label || (rawValue === undefined ? "No data" : rawValue)),
+    rawLabel: String(rawValue),
+    label: String(resolved.label || rawValue),
     className: ["safe", "warning", "danger", "neutral"].includes(resolved.severity)
       ? resolved.severity
       : "neutral",
@@ -873,6 +698,10 @@ function MachineConfigurationPage({
   }
 
   function addPolygonPoint(event) {
+    if (!draft.imagePreview) {
+      setError("Add a machine image before drawing segments.");
+      return;
+    }
     const bounds = event.currentTarget.getBoundingClientRect();
     const x = Math.max(0, Math.min(100, ((event.clientX - bounds.left) / bounds.width) * 100));
     const y = Math.max(0, Math.min(100, ((event.clientY - bounds.top) / bounds.height) * 100));
@@ -1062,6 +891,54 @@ function MachineConfigurationPage({
     reader.readAsDataURL(file);
   }
 
+
+  function handleModelFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setError("");
+    const isGlb = /\.glb$/i.test(file.name) || file.type === "model/gltf-binary";
+    const isGltf = /\.gltf$/i.test(file.name) || file.type === "model/gltf+json";
+    if (!isGlb && !isGltf) {
+      setError("Use a GLB or GLTF 3D model.");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > 80 * 1024 * 1024) {
+      setError("The 3D model must be 80 MB or smaller.");
+      event.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onerror = () => setError("The selected 3D model could not be read.");
+    reader.onload = () => {
+      const value = String(reader.result || "");
+      setDraft((current) => ({
+        ...current,
+        modelPreviewUrl: value,
+        model_base64: value,
+        model_mime_type: file.type || (isGlb ? "model/gltf-binary" : "model/gltf+json"),
+        model_file_name: file.name,
+        model_size_bytes: file.size,
+        remove_model: false,
+      }));
+      setMessage(`${file.name} is ready to save.`);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function removeModelFromDraft() {
+    setDraft((current) => ({
+      ...current,
+      modelPreviewUrl: "",
+      model_base64: "",
+      model_file_name: "",
+      model_size_bytes: null,
+      remove_model: true,
+    }));
+    setMessage("The 3D model will be removed when you save the configuration.");
+  }
+
   async function saveConfiguration() {
     setSaving(true);
     setError("");
@@ -1094,6 +971,11 @@ function MachineConfigurationPage({
           image_mime_type: draft.image_mime_type,
           image_width: draft.image_width,
           image_height: draft.image_height,
+          model_base64: draft.model_base64 || undefined,
+          model_mime_type: draft.model_mime_type,
+          model_file_name: draft.model_file_name,
+          model_size_bytes: draft.model_size_bytes,
+          remove_model: draft.remove_model,
           segments,
           points,
         }),
@@ -1194,9 +1076,10 @@ function MachineConfigurationPage({
               >
                 <span className="configurator-swipe-direction">← Previous</span>
                 <span className="configurator-swipe-preview-content floating-media">
-                  {!previousGalleryItem.isAddMore && (
-                    <img src={previousGalleryItem.image?.url || machineImage} alt="" />
+                  {!previousGalleryItem.isAddMore && previousGalleryItem.image?.url && (
+                    <img src={previousGalleryItem.image.url} alt="" />
                   )}
+                  {!previousGalleryItem.isAddMore && !previousGalleryItem.image?.url && <span className="configurator-image-no-data">No Data</span>}
                   {previousGalleryItem.isAddMore && <i aria-hidden="true">+</i>}
                   <strong>{previousGalleryItem.name}</strong>
                 </span>
@@ -1214,8 +1097,10 @@ function MachineConfigurationPage({
               <span className="configurator-swipe-image floating-media">
                 {activeGalleryItem?.isAddMore ? (
                   <i aria-hidden="true">+</i>
+                ) : activeGalleryItem?.image?.url ? (
+                  <img src={activeGalleryItem.image.url} alt={`${activeGalleryItem?.name || "Machine"} machine`} />
                 ) : (
-                  <img src={activeGalleryItem?.image?.url || machineImage} alt={`${activeGalleryItem?.name || "Machine"} machine`} />
+                  <span className="configurator-image-no-data">No Data</span>
                 )}
               </span>
               <span className="configurator-swipe-copy">
@@ -1234,9 +1119,10 @@ function MachineConfigurationPage({
             >
               <span className="configurator-swipe-direction">Next →</span>
               <span className="configurator-swipe-preview-content floating-media">
-                {nextGalleryItem && !nextGalleryItem.isAddMore && (
-                  <img src={nextGalleryItem.image?.url || machineImage} alt="" />
+                {nextGalleryItem && !nextGalleryItem.isAddMore && nextGalleryItem.image?.url && (
+                  <img src={nextGalleryItem.image.url} alt="" />
                 )}
+                {nextGalleryItem && !nextGalleryItem.isAddMore && !nextGalleryItem.image?.url && <span className="configurator-image-no-data">No Data</span>}
                 {nextGalleryItem?.isAddMore && <i aria-hidden="true">+</i>}
                 <strong>{nextGalleryItem?.name || "End of list"}</strong>
               </span>
@@ -1289,10 +1175,28 @@ function MachineConfigurationPage({
 
           <section className="configurator-section image-segment-section">
             <div className="configurator-section-heading"><span>Step 2</span><div><strong>Machine image and segments</strong><small>Click the image to draw the selected segment</small></div></div>
+            <div className="machine-model-upload-row">
+              <div>
+                <strong>3D model</strong>
+                <small>{draft.model_file_name || (draft.modelPreviewUrl ? "3D model available" : "No Data")}</small>
+              </div>
+              <div className="machine-model-upload-actions">
+                {draft.modelPreviewUrl && <button type="button" onClick={removeModelFromDraft}>Remove 3D</button>}
+                <label className="machine-model-upload">
+                  {draft.modelPreviewUrl ? "Replace 3D" : "Add 3D"}
+                  <input type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" onChange={handleModelFile} />
+                </label>
+              </div>
+            </div>
+
             <div className="segment-workbench">
               <div className="segment-canvas-column">
                 <div className="segment-editor-canvas floating-media" style={{ aspectRatio: FIXED_MACHINE_CANVAS_ASPECT }} onClick={addPolygonPoint}>
-                  <img src={draft.imagePreview || machineImage} alt="Machine segmentation editor" />
+                  {draft.imagePreview ? (
+                    <img src={draft.imagePreview} alt="Machine segmentation editor" />
+                  ) : (
+                    <div className="segment-editor-no-data">No Data</div>
+                  )}
                   <svg viewBox="0 0 100 100" preserveAspectRatio="none">
                     {draft.segments.map((segment) => (
                       <polygon
@@ -1455,7 +1359,7 @@ function LegacyDashboardApp({
   onOpenAdmin,
   onOpenMachineSetup,
 }) {
-  const [activeMachineId, setActiveMachineId] = useState("mespack");
+  const [activeMachineId, setActiveMachineId] = useState("");
   const [machineData, setMachineData] = useState(null);
   const [apiError, setApiError] = useState("");
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -1471,36 +1375,44 @@ function LegacyDashboardApp({
 
   const machineConfigs = useMemo(() => {
     const configured = (machineCatalog || []).filter((machine) => machine.is_active !== false);
-    if (!configured.length) return MACHINE_CONFIGS;
-
     return configured.reduce((result, machine) => {
-      const template = MACHINE_CONFIGS[machine.template_id] || MACHINE_CONFIGS.mespack;
       const databasePoints = (machine.points || []).filter((point) => point.is_active !== false);
       const databaseZones = (machine.segments || []).filter((segment) => segment.is_active !== false);
       result[machine.id] = {
-        ...template,
         id: machine.id,
-        name: machine.name,
-        title: machine.name,
-        subtitle: machine.id === "mespack"
-          ? template.subtitle
-          : "Configured machine using the Mespack monitoring template",
-        apiUrl: machine.api_url || template.apiUrl,
-        image: machine.image?.url || template.image,
+        name: machine.name || "No Data",
+        title: machine.name || "No Data",
+        subtitle: machine.description || "",
+        apiUrl: machine.api_url || `/api/machines/${encodeURIComponent(machine.id)}/data`,
+        image: machine.image?.url || "",
         canvasAspectRatio: Number(machine.image?.canvas_aspect_ratio || FIXED_MACHINE_CANVAS_ASPECT),
-        points: databasePoints.length ? databasePoints.map(machinePointFromDatabase) : template.points,
-        zones: databaseZones.length ? databaseZones.map(machineZoneFromDatabase) : template.zones,
+        points: databasePoints.map(machinePointFromDatabase),
+        zones: databaseZones.map(machineZoneFromDatabase),
         dataSource: machine.data_source || null,
+        modelUrl: machine.model?.url || machine.model_url || "",
+        modelZones: Array.isArray(machine.model_zones) ? machine.model_zones : [],
+        modelSettings: machine.model_settings || MACHINE_3D_MODEL_SETTINGS,
       };
       return result;
     }, {});
   }, [machineCatalog]);
 
-  const activeMachine = machineConfigs[activeMachineId] || Object.values(machineConfigs)[0] || MACHINE_CONFIGS.mespack;
+  const activeMachine = machineConfigs[activeMachineId] || Object.values(machineConfigs)[0] || {
+    id: "no-data",
+    name: "No Data",
+    apiUrl: "",
+    image: "",
+    canvasAspectRatio: FIXED_MACHINE_CANVAS_ASPECT,
+    points: [],
+    zones: [],
+    modelUrl: "",
+    modelZones: [],
+    modelSettings: MACHINE_3D_MODEL_SETTINGS,
+  };
 
   useEffect(() => {
     if (!machineConfigs[activeMachineId]) {
-      setActiveMachineId(Object.keys(machineConfigs)[0] || "mespack");
+      setActiveMachineId(Object.keys(machineConfigs)[0] || "no-data");
     }
   }, [machineConfigs, activeMachineId]);
 
@@ -1515,6 +1427,12 @@ function LegacyDashboardApp({
   ========================================================= */
 
   async function fetchMachineData() {
+    if (!activeMachine.apiUrl) {
+      setMachineData(null);
+      setApiError("");
+      setLastUpdated(null);
+      return;
+    }
     try {
       const res = await fetch(activeMachine.apiUrl);
       if (!res.ok) throw new Error(`API error ${res.status}`);
@@ -1535,11 +1453,16 @@ function LegacyDashboardApp({
     setMachinePickerOpen(false);
     setMachineImageAspect(activeMachine.canvasAspectRatio || FIXED_MACHINE_CANVAS_ASPECT);
 
+    if (!activeMachine.apiUrl) return undefined;
     fetchMachineData();
 
     const interval = setInterval(fetchMachineData, 1000);
     return () => clearInterval(interval);
   }, [activeMachineId, activeMachine.apiUrl, activeMachine.canvasAspectRatio]);
+
+  useEffect(() => {
+    if (!activeMachine.modelUrl && viewMode === "3d") setViewMode("2d");
+  }, [activeMachine.modelUrl, viewMode]);
 
   const payload = machineData?.data || {};
 
@@ -1563,25 +1486,15 @@ const machineRows = useMemo(() => {
     const liveOpenCloseValue = payloadValueAtPath(payload, `${point.guardTag}_OpenClose`);
     const liveLockStateValue = payloadValueAtPath(payload, `${point.interlockTag}_LockState`);
 
-    const fallbackGuardOn =
-      liveGuardOnValue === undefined
-        ? !point.guardOpen
-        : toBool(liveGuardOnValue);
-
-    const fallbackHealthyOn =
-      liveHealthyValue === undefined
-        ? point.interlockOk
-        : toBool(liveHealthyValue);
-
-    const openClose =
-      normalizeOpenCloseState(liveOpenCloseValue) ||
-      (fallbackGuardOn ? "CLOSE" : "OPEN");
-
-    const lockState =
-      normalizeLockState(liveLockStateValue) ||
-      (fallbackHealthyOn ? "LOCK" : "UNLOCK");
-
+    const openClose = normalizeOpenCloseState(liveOpenCloseValue)
+      || normalizeOpenCloseState(liveGuardOnValue);
+    const lockState = normalizeLockState(liveLockStateValue)
+      || normalizeLockState(liveHealthyValue);
     const interpretation = pointInterpretation(point, payload);
+    const hasLiveData = liveGuardOnValue !== undefined
+      || liveHealthyValue !== undefined
+      || liveOpenCloseValue !== undefined
+      || liveLockStateValue !== undefined;
 
     return {
       ...point,
@@ -1590,6 +1503,7 @@ const machineRows = useMemo(() => {
       guardOpen: openClose === "OPEN",
       interlockOk: lockState === "LOCK",
       interpretation,
+      hasLiveData,
     };
   });
 }, [payload, activeMachine]);
@@ -1772,7 +1686,7 @@ const machineRows = useMemo(() => {
             <span>{theme === "dark" ? "☀" : "☾"}</span>
             {theme === "dark" ? "Light" : "Dark"}
           </button>
-          <button className="studio-confirm-button" onClick={() => setFaceModalOpen(true)}>
+          <button className="studio-confirm-button" onClick={() => setFaceModalOpen(true)} disabled={!machineList.length}>
             <span>✓</span> Confirm check
           </button>
         </div>
@@ -1794,8 +1708,7 @@ const machineRows = useMemo(() => {
           }}
         >
           <button className="studio-machine-preview previous" onClick={() => cycleMachine(-1)} disabled={!previousMachine} aria-label="Previous machine">
-            <span>← Previous</span>
-            <strong>{previousMachine?.name || "No previous machine"}</strong>
+            {previousMachine && <><span>← Previous</span><strong>{previousMachine.name}</strong></>}
           </button>
           <button
             key={activeMachine.id}
@@ -1805,15 +1718,14 @@ const machineRows = useMemo(() => {
             aria-expanded={machinePickerOpen}
             aria-controls="studio-machine-picker"
           >
-            <span className="studio-machine-card-image floating-media"><img src={activeMachine.image} alt="" /></span>
+            <span className="studio-machine-card-image floating-media">{activeMachine.image ? <img src={activeMachine.image} alt="" /> : <small>No Data</small>}</span>
             <span className="studio-machine-card-copy">
               <small>Machine {String(activeMachineIndex + 1).padStart(2, "0")} / {String(machineList.length).padStart(2, "0")}</small>
               <strong>{activeMachine.name}<i aria-hidden="true">⌄</i></strong>
             </span>
           </button>
           <button className="studio-machine-preview next" onClick={() => cycleMachine(1)} disabled={!nextMachine} aria-label="Next machine">
-            <span>Next →</span>
-            <strong>{nextMachine?.name || "No next machine"}</strong>
+            {nextMachine && <><span>Next →</span><strong>{nextMachine.name}</strong></>}
           </button>
 
           {machinePickerOpen && (
@@ -1830,7 +1742,7 @@ const machineRows = useMemo(() => {
                     key={machine.id}
                     onClick={() => switchMachine(machine.id)}
                   >
-                    <span className="floating-media"><img src={machine.image} alt="" /></span>
+                    <span className="floating-media">{machine.image ? <img src={machine.image} alt="" /> : <small>No Data</small>}</span>
                     <strong>{machine.name}</strong>
                     <small>{machine.id === activeMachineId ? "Selected" : "Open machine"}</small>
                   </button>
@@ -1859,16 +1771,18 @@ const machineRows = useMemo(() => {
                   className={`studio-caption-connection ${machineData?.mqttConnected ? "online" : "offline"}`}
                   title={machineData?.mqttConnected
                     ? `MQTT connected${lastUpdated ? ` · ${lastUpdated.toLocaleTimeString()}` : ""}`
-                    : apiError ? `Data unavailable · ${apiError}` : "MQTT offline"}
+                    : apiError ? `Data unavailable · ${apiError}` : activeMachine.apiUrl ? "MQTT offline" : "No Data"}
                 />
-                <button
-                  onClick={() => {
-                    setViewMode((current) => current === "2d" ? "3d" : "2d");
-                    resetView();
-                  }}
-                >
-                  {viewMode === "2d" ? "3D" : "2D"}
-                </button>
+                {activeMachine.modelUrl && (
+                  <button
+                    onClick={() => {
+                      setViewMode((current) => current === "2d" ? "3d" : "2d");
+                      resetView();
+                    }}
+                  >
+                    {viewMode === "2d" ? "3D" : "2D"}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1885,11 +1799,15 @@ const machineRows = useMemo(() => {
                     }`}
                     style={{ ...machineCanvasStyle, aspectRatio: machineImageAspect }}
                   >
-                    <img
-                      src={activeMachine.image}
-                      alt={activeMachine.name}
-                      className="machine-img"
-                    />
+                    {activeMachine.image ? (
+                      <img
+                        src={activeMachine.image}
+                        alt={activeMachine.name}
+                        className="machine-img"
+                      />
+                    ) : (
+                      <div className="machine-no-data">No Data</div>
+                    )}
 
                     <svg
                       className="machine-svg-overlay"
@@ -2052,9 +1970,9 @@ function ZoneDetailPanel({ machineName, zone, focusedPointId, onPointClick, onCl
           {zone.tags.map((tag) => {
             const state = getSafetyState(tag);
             const isFocused = Number(focusedPointId) === Number(tag.id);
-            const displayStates = tag.interpretation?.states || [
-              { label: tag.openClose, className: tag.openClose === "OPEN" ? "warning" : "safe", color: null },
-              { label: tag.lockState, className: tag.lockState === "UNLOCK" ? "danger" : "safe", color: null },
+            const displayStates = tag.interpretation?.states?.length ? tag.interpretation.states : [
+              { label: tag.openClose || "No Data", className: tag.openClose ? (tag.openClose === "OPEN" ? "warning" : "safe") : "neutral", color: null },
+              { label: tag.lockState || "No Data", className: tag.lockState ? (tag.lockState === "UNLOCK" ? "danger" : "safe") : "neutral", color: null },
             ];
 
             return (
@@ -2098,7 +2016,7 @@ function ZoneStatusRail({ zones, selectedPoint, onZoneClick, onPointClick, side 
       aria-label={`${side} machine sections`}
     >
       {zones.map((zone) => {
-        const issueCount = zone.tags.filter((tag) => getSafetyState(tag).className !== "safe").length;
+        const issueCount = zone.tags.filter((tag) => ["danger", "warning"].includes(getSafetyState(tag).className)).length;
         const zoneSelected = selectedPoint?.type === "zone" && selectedPoint?.id === zone.id;
 
         return (
@@ -2108,7 +2026,7 @@ function ZoneStatusRail({ zones, selectedPoint, onZoneClick, onPointClick, side 
                 <strong>{zone.name}</strong>
                 <small>{zone.tags.length} points</small>
               </span>
-              <em className={zone.state.className}>{issueCount ? `${issueCount} alert${issueCount === 1 ? "" : "s"}` : "Ready"}</em>
+              <em className={zone.state.className}>{issueCount ? `${issueCount} alert${issueCount === 1 ? "" : "s"}` : zone.state.label}</em>
             </button>
 
             <div className="studio-zone-points">
@@ -2116,7 +2034,7 @@ function ZoneStatusRail({ zones, selectedPoint, onZoneClick, onPointClick, side 
                 const state = getSafetyState(tag);
                 const isSelected = Number(selectedPoint?.focusedPointId) === Number(tag.id);
                 const stateSummary = tag.interpretation?.states?.map((item) => item.label).join(" · ")
-                  || `${tag.openClose} · ${tag.lockState}`;
+                  || `${tag.openClose || "No Data"} · ${tag.lockState || "No Data"}`;
                 return (
                   <button
                     type="button"
@@ -2151,6 +2069,9 @@ function ZoneStatusRail({ zones, selectedPoint, onZoneClick, onPointClick, side 
 ========================================================= */
 
 function getSafetyState(point) {
+  if (!point?.hasLiveData) {
+    return { label: "No Data", className: "neutral", color: "#64748b" };
+  }
   if (point.interpretation?.overall) {
     return {
       label: point.interpretation.overall.label,
@@ -2192,7 +2113,11 @@ function getSafetyState(point) {
 }
 
 function getZoneState(tags) {
+  if (!tags.length) return { label: "No Data", className: "neutral" };
   const states = tags.map((tag) => getSafetyState(tag));
+  if (states.every((state) => state.className === "neutral")) {
+    return { label: "No Data", className: "neutral" };
+  }
   const hasDanger = states.some((state) => state.className === "danger");
   const hasWarning = states.some((state) => state.className === "warning");
   const hasNeutral = states.some((state) => state.className === "neutral");

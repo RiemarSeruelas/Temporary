@@ -5244,3 +5244,178 @@ button:hover {
     translate: none;
   }
 }
+
+
+/* =========================================================
+   AUGUST 05, 2026 — 3D upload, true No Data states, compact gallery
+========================================================= */
+
+/* Keep the workspace selection cards balanced and the icon centered. */
+.admin-hub-options {
+  grid-template-columns: repeat(2, minmax(260px, 370px));
+}
+.admin-hub-card {
+  width: 100%;
+  min-height: 220px;
+  padding: 26px 48px 26px 26px;
+}
+.admin-hub-icon {
+  margin-inline: auto;
+}
+
+/* The machine directory must always leave room for the bottom copy/actions. */
+.configurator-card-stage {
+  padding-block: clamp(10px, 2vh, 22px) 18px;
+}
+.configurator-machine-swipe {
+  height: min(500px, calc(100dvh - 190px));
+  min-height: 300px;
+}
+.configurator-swipe-current {
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+.configurator-swipe-image {
+  min-height: 0;
+}
+.configurator-swipe-image img {
+  max-width: 100%;
+  max-height: 100%;
+  padding: clamp(14px, 2.5vw, 26px);
+  object-fit: contain;
+}
+.configurator-swipe-copy {
+  flex: none;
+  padding: 14px 18px 16px;
+}
+.configurator-swipe-copy strong {
+  font-size: clamp(21px, 2.2vw, 27px);
+}
+.configurator-image-no-data,
+.segment-editor-no-data,
+.machine-no-data,
+.machine-3d-no-data {
+  color: var(--admin-muted, var(--studio-muted));
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  min-height: 120px;
+  font-size: 10px;
+  font-weight: 800;
+  display: grid;
+}
+.configurator-swipe-preview-content .configurator-image-no-data {
+  width: 92px;
+  height: 62px;
+  min-height: 0;
+  border: 1px solid var(--admin-line-soft);
+  border-radius: 12px;
+}
+
+.machine-model-upload-row {
+  border: 1px solid var(--admin-line, #2d3338);
+  background: var(--admin-field, #101315);
+  border-radius: 10px;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+  padding: 11px 12px;
+  display: flex;
+}
+.machine-model-upload-row > div:first-child {
+  min-width: 0;
+  gap: 3px;
+  display: grid;
+}
+.machine-model-upload-row strong { font-size: 10px; }
+.machine-model-upload-row small {
+  color: var(--admin-muted, #7f8990);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 8px;
+  overflow: hidden;
+}
+.machine-model-upload-actions {
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  display: flex;
+}
+.machine-model-upload,
+.machine-model-upload-actions button {
+  color: var(--admin-text, #edf0f2);
+  border: 1px solid var(--admin-line, #373d42);
+  background: var(--admin-panel-strong, #20252a);
+  cursor: pointer;
+  border-radius: 8px;
+  align-items: center;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 9px;
+  font-weight: 750;
+  display: inline-flex;
+}
+.machine-model-upload input { display: none; }
+.machine-3d-no-data {
+  color: var(--studio-muted);
+  background: var(--studio-panel-strong);
+}
+.studio-machine-card-image small,
+.studio-machine-picker-list > button > span small {
+  color: var(--studio-muted);
+  font-size: 7px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.operator-heading-actions {
+  align-items: center;
+  gap: 10px;
+  display: flex;
+}
+.operator-download-button {
+  color: var(--admin-accent-ink);
+  border: 1px solid var(--admin-accent);
+  background: var(--admin-accent);
+  cursor: pointer;
+  border-radius: 10px;
+  height: 46px;
+  padding: 0 15px;
+  font-size: 10px;
+  font-weight: 800;
+}
+.operator-camera video,
+.confirmation-live-camera video {
+  object-fit: cover;
+  width: 100%;
+  height: 100%;
+  min-height: 220px;
+  display: block;
+}
+.confirmation-live-camera {
+  width: min(560px, 100%);
+  height: 100%;
+  min-height: 420px;
+  position: relative;
+}
+.confirmation-live-camera button {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+@media (max-width: 760px) {
+  .admin-hub-options { grid-template-columns: minmax(0, 1fr); }
+  .admin-hub-card { min-height: 190px; }
+  .configurator-machine-swipe { height: min(430px, calc(100dvh - 160px)); }
+  .operator-admin-heading { align-items: stretch; flex-direction: column; }
+  .operator-heading-actions { justify-content: space-between; }
+  .operator-download-button { flex: 1; }
+  .machine-model-upload-row { align-items: stretch; flex-direction: column; }
+  .machine-model-upload-actions { justify-content: flex-end; }
+}

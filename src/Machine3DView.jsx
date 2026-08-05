@@ -14,6 +14,11 @@ const DEFAULT_MODEL_SETTINGS = {
 
 export default function Machine3DView({ machine, zones, selectedPoint, onZoneClick, theme }) {
   const modelSettings = machine.modelSettings || DEFAULT_MODEL_SETTINGS;
+  const modelUrl = machine.modelUrl || machine.model?.url || "";
+
+  if (!modelUrl) {
+    return <div className="machine-3d-no-data">No Data</div>;
+  }
   const zoneMapById = new Map((machine.modelZones || []).map((zone) => [zone.id, zone]));
   const zoneOverlays = zones
     .map((zone) => ({ ...zone, map3d: zoneMapById.get(zone.id) }))
@@ -33,7 +38,7 @@ export default function Machine3DView({ machine, zones, selectedPoint, onZoneCli
 
         <Suspense fallback={null}>
           <MachineModel
-            url={machine.modelUrl || "/models/mespack.glb"}
+            url={modelUrl}
             scale={modelSettings.scale}
             position={modelSettings.position}
             rotation={modelSettings.rotation}
@@ -61,7 +66,6 @@ export default function Machine3DView({ machine, zones, selectedPoint, onZoneCli
           makeDefault
         />
       </Canvas>
-      <div className="machine-3d-hint">Drag to rotate · Scroll to zoom</div>
     </div>
   );
 }
@@ -155,4 +159,3 @@ function get3DStatusColor(className) {
   return { fill: "#22c55e", edge: "#86efac", label: "#15753a" };
 }
 
-useGLTF.preload("/models/mespack.glb");

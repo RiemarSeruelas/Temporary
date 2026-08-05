@@ -46,41 +46,95 @@ function isMobileCaptureDevice() {
 
 function useCamera() {
   const [imageData, setImageData] = useState("");
+  const [stream, setStream] = useState(null);
+  const [cameraError, setCameraError] = useState("");
   const fileInputRef = useRef(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
   const isMobileDevice = useMemo(isMobileCaptureDevice, []);
+  const supportsLiveCamera = typeof navigator !== "undefined"
+    && Boolean(navigator.mediaDevices?.getUserMedia);
 
   function openImagePicker() {
     fileInputRef.current?.click();
   }
 
+  function stopCamera() {
+    setStream((current) => {
+      current?.getTracks?.().forEach((track) => track.stop());
+      return null;
+    });
+    if (videoRef.current) videoRef.current.srcObject = null;
+  }
+
+  async function startCamera() {
+    setCameraError("");
+    if (!navigator.mediaDevices?.getUserMedia) {
+      const error = new Error("Live camera is unavailable on this device or connection.");
+      setCameraError(error.message);
+      throw error;
+    }
+    stopCamera();
+    const nextStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+    setStream(nextStream);
+    window.setTimeout(async () => {
+      if (!videoRef.current) return;
+      videoRef.current.srcObject = nextStream;
+      await videoRef.current.play().catch(() => {});
+    }, 0);
+    return nextStream;
+  }
+
+  async function registerFace() {
+    if (supportsLiveCamera) {
+      try {
+        await startCamera();
+        return "camera";
+      } catch {
+        openImagePicker();
+        return "file";
+      }
+    }
+    openImagePicker();
+    return "file";
+  }
+
+  function captureImage() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || !video.videoWidth || !video.videoHeight) {
+      throw new Error("Camera is not ready yet.");
+    }
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+    const value = canvas.toDataURL("image/jpeg", 0.9);
+    setImageData(value);
+    stopCamera();
+    return value;
+  }
+
   function clearImage() {
+    stopCamera();
     setImageData("");
+    setCameraError("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function readImageFile(file) {
     return new Promise((resolve, reject) => {
-      if (!file) {
-        reject(new Error("No image was selected."));
-        return;
-      }
-      if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) {
-        reject(new Error("Use a JPG, PNG, or WebP image."));
-        return;
-      }
-      if (file.size > 12 * 1024 * 1024) {
-        reject(new Error("The image must be 12 MB or smaller."));
-        return;
-      }
-
+      if (!file) return reject(new Error("No image was selected."));
+      if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) return reject(new Error("Use a JPG, PNG, or WebP image."));
+      if (file.size > 12 * 1024 * 1024) return reject(new Error("The image must be 12 MB or smaller."));
       const reader = new FileReader();
       reader.onerror = () => reject(new Error("The selected image could not be read."));
       reader.onload = () => {
         const value = String(reader.result || "");
-        if (!value.startsWith("data:image/")) {
-          reject(new Error("The selected file is not a valid image."));
-          return;
-        }
+        if (!value.startsWith("data:image/")) return reject(new Error("The selected file is not a valid image."));
+        stopCamera();
         setImageData(value);
         resolve(value);
       };
@@ -94,14 +148,26 @@ function useCamera() {
     return readImageFile(file);
   }
 
+  useEffect(() => () => {
+    stream?.getTracks?.().forEach((track) => track.stop());
+  }, [stream]);
+
   return {
     imageData,
+    stream,
+    cameraError,
     fileInputRef,
+    videoRef,
+    canvasRef,
     isMobileDevice,
+    supportsLiveCamera,
     captureMode: isMobileDevice ? "user" : undefined,
     openImagePicker,
+    registerFace,
+    captureImage,
     clearImage,
     readImageEvent,
+    stopCamera,
   };
 }
 
@@ -127,6 +193,16 @@ export function ConfirmationModal({ machine, theme, onClose, onConfirmed }) {
       await detectOperator(image);
     } catch (imageError) {
       setError(imageError.message);
+      setPhase("error");
+    }
+  }
+
+  async function captureAndDetect() {
+    try {
+      const image = camera.captureImage();
+      await detectOperator(image);
+    } catch (captureError) {
+      setError(captureError.message);
       setPhase("error");
     }
   }
@@ -157,7 +233,7 @@ export function ConfirmationModal({ machine, theme, onClose, onConfirmed }) {
     setResult(null);
     setPhase("capture");
     camera.clearImage();
-    window.setTimeout(camera.openImagePicker, 0);
+    window.setTimeout(camera.registerFace, 0);
   }
 
   async function confirmOperator() {
@@ -196,20 +272,26 @@ export function ConfirmationModal({ machine, theme, onClose, onConfirmed }) {
 
         {(phase === "capture" || phase === "detecting") && (
           <div className="confirmation-capture-stage">
-            {camera.imageData ? (
+            {camera.stream ? (
+              <div className="confirmation-live-camera">
+                <video ref={camera.videoRef} playsInline muted autoPlay />
+                <canvas ref={camera.canvasRef} hidden />
+                <button className="primary" type="button" onClick={captureAndDetect}>Capture Face</button>
+              </div>
+            ) : camera.imageData ? (
               <img src={camera.imageData} alt="Selected operator face" />
             ) : (
               <div className="confirmation-capture-empty">
                 <i aria-hidden="true" />
-                <span>{camera.isMobileDevice ? "Camera capture" : "Image upload"}</span>
-                <h2>{camera.isMobileDevice ? "Take an operator photo" : "Choose an operator photo"}</h2>
+                <span>Face registration</span>
+                <h2>Register the operator face</h2>
                 <p>
-                  {camera.isMobileDevice
-                    ? "Your phone will open the front camera. Keep the operator's face centered and well lit."
-                    : "Live camera access stays off on laptops and desktops. Select a clear face image instead."}
+                  {camera.supportsLiveCamera
+                    ? "A live camera will open. If camera access fails, select a clear face image instead."
+                    : "Live camera is unavailable, so a clear face image can be selected instead."}
                 </p>
-                <button className="primary" type="button" onClick={camera.openImagePicker}>
-                  {camera.isMobileDevice ? "Open camera" : "Choose image"}
+                <button className="primary" type="button" onClick={camera.registerFace}>
+                  Register Face
                 </button>
               </div>
             )}
@@ -256,7 +338,7 @@ export function ConfirmationModal({ machine, theme, onClose, onConfirmed }) {
             <span>Face not confirmed</span>
             <h2>Try another image</h2>
             <p>{safeText(error)}</p>
-            <div className="confirmation-actions"><button onClick={onClose}>Cancel</button><button className="primary" onClick={chooseAnotherImage}>{camera.isMobileDevice ? "Open camera" : "Choose image"}</button></div>
+            <div className="confirmation-actions"><button onClick={onClose}>Cancel</button><button className="primary" onClick={chooseAnotherImage}>Register Face</button></div>
           </div>
         )}
       </section>
@@ -265,7 +347,7 @@ export function ConfirmationModal({ machine, theme, onClose, onConfirmed }) {
 }
 
 function MatrixCell({ cell }) {
-  if (!cell || cell.state === "NO_DATA") return <span className="operator-cell-empty">No data</span>;
+  if (!cell || cell.state === "NO_DATA") return <span className="operator-cell-empty">No Data</span>;
   if (cell.state === "FUTURE") return <span className="operator-cell-future">—</span>;
 
   return (
@@ -286,6 +368,35 @@ function MatrixCell({ cell }) {
   );
 }
 
+function excelCell(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[character]));
+}
+
+function buildOperatorLogRows(matrix) {
+  const rows = [];
+  (matrix || []).forEach((day) => {
+    SHIFT_OPTIONS.forEach((shift) => {
+      const cell = day.shifts?.[shift.value];
+      if (!cell?.entries?.length) {
+        rows.push({ date: day.date, shift: shift.label, hours: shift.hours, state: cell?.state || "NO_DATA", operator: "No Data", machine: "No Data", confirmed_at: "No Data" });
+        return;
+      }
+      cell.entries.forEach((entry) => rows.push({
+        date: day.date,
+        shift: shift.label,
+        hours: shift.hours,
+        state: entry.state || "No Data",
+        operator: entry.person_name || "No Data",
+        machine: entry.machine_name || "No Data",
+        confirmed_at: entry.confirmed_at ? formatTime(entry.confirmed_at) : "No Data",
+      }));
+    });
+  });
+  return rows;
+}
+
 export function OperatorAdminPage({ machines, password }) {
   const today = localDateKey();
   const [tab, setTab] = useState("registration");
@@ -296,14 +407,14 @@ export function OperatorAdminPage({ machines, password }) {
     date_to: addLocalDays(today, 2),
     machine: "",
   });
-  const [form, setForm] = useState({ person_name: "", machine: machines[0]?.id || "mespack", shift_code: "MORNING" });
+  const [form, setForm] = useState({ person_name: "", machine: machines?.[0]?.id || "", shift_code: "MORNING" });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const camera = useCamera();
 
-  const machineOptions = machines?.length ? machines : [{ id: "mespack", name: "Mespack" }];
-  const selectedMachine = machineOptions.find((item) => item.id === form.machine) || machineOptions[0];
+  const machineOptions = (machines || []).filter((machine) => machine.is_active !== false);
+  const selectedMachine = machineOptions.find((item) => item.id === form.machine) || machineOptions[0] || null;
   const selectedWindow = context?.windows?.find((window) => window.shift_code === form.shift_code);
   const registrationRows = useMemo(() => overview.registrations || [], [overview.registrations]);
 
@@ -311,6 +422,12 @@ export function OperatorAdminPage({ machines, password }) {
     loadContext();
     loadOverview();
   }, []);
+
+  useEffect(() => {
+    if (!form.machine && machineOptions[0]?.id) {
+      setForm((current) => ({ ...current, machine: machineOptions[0].id }));
+    }
+  }, [machineOptions, form.machine]);
 
   async function loadContext() {
     try {
@@ -339,9 +456,33 @@ export function OperatorAdminPage({ machines, password }) {
     }
   }
 
+  function downloadLogsExcel() {
+    const rows = buildOperatorLogRows(overview.matrix);
+    if (!rows.length) {
+      setError("No Data to export.");
+      return;
+    }
+    const headings = ["Date", "Shift", "Shift hours", "Status", "Operator", "Machine", "Confirmed at"];
+    const bodyRows = rows.map((row) => [row.date, row.shift, row.hours, row.state, row.operator, row.machine, row.confirmed_at]);
+    const html = `<!doctype html><html><head><meta charset="utf-8"></head><body><table border="1"><thead><tr>${headings.map((item) => `<th>${excelCell(item)}</th>`).join("")}</tr></thead><tbody>${bodyRows.map((row) => `<tr>${row.map((item) => `<td>${excelCell(item)}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`;
+    const blob = new Blob(["\ufeff", html], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `operator-logs_${filters.date_from}_to_${filters.date_to}.xls`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async function registerOperator() {
     if (!form.person_name.trim()) {
       setError("Enter the operator name.");
+      return;
+    }
+    if (!selectedMachine) {
+      setError("No Data: add a machine before registering an operator.");
       return;
     }
     if (!camera.imageData) {
@@ -395,9 +536,12 @@ export function OperatorAdminPage({ machines, password }) {
     <section className="operator-admin">
       <header className="operator-admin-heading">
         <div><span>Operator confirmation</span><h1>Registration and logs</h1></div>
-        <div className="operator-tabs" role="tablist">
-          <button className={tab === "registration" ? "active" : ""} onClick={() => selectTab("registration")}>Registration</button>
-          <button className={tab === "logs" ? "active" : ""} onClick={() => selectTab("logs")}>Logs</button>
+        <div className="operator-heading-actions">
+          <button className="operator-download-button" type="button" onClick={downloadLogsExcel}>Download Excel</button>
+          <div className="operator-tabs" role="tablist">
+            <button className={tab === "registration" ? "active" : ""} onClick={() => selectTab("registration")}>Registration</button>
+            <button className={tab === "logs" ? "active" : ""} onClick={() => selectTab("logs")}>Logs</button>
+          </div>
         </div>
       </header>
 
@@ -410,12 +554,12 @@ export function OperatorAdminPage({ machines, password }) {
             <div className="operator-section-heading"><span>Register shift</span><strong>Operator assignment</strong></div>
             <div className="operator-registration-fields">
               <label>Operator name<input value={form.person_name} onChange={(event) => setForm((current) => ({ ...current, person_name: event.target.value }))} autoComplete="off" /></label>
-              <label>Machine<select value={form.machine} onChange={(event) => setForm((current) => ({ ...current, machine: event.target.value }))}>{machineOptions.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
+              <label>Machine<select value={form.machine} onChange={(event) => setForm((current) => ({ ...current, machine: event.target.value }))}>{machineOptions.length ? machineOptions.map((item) => <option value={item.id} key={item.id}>{item.name}</option>) : <option value="">No Data</option>}</select></label>
               <label>Shift<select value={form.shift_code} onChange={(event) => setForm((current) => ({ ...current, shift_code: event.target.value }))}>{SHIFT_OPTIONS.map((shift) => <option value={shift.value} key={shift.value}>{shift.label} · {shift.hours}</option>)}</select></label>
             </div>
             <div className={`operator-window ${selectedWindow?.is_in_window ? "open" : "closed"}`}>
               <i aria-hidden="true" />
-              <span><strong>{selectedWindow?.is_in_window ? "Registration open" : "Registration closed"}</strong><small>{selectedWindow ? `${selectedWindow.shift_label} registers from ${selectedWindow.verification_label}` : "No data"}</small></span>
+              <span><strong>{selectedWindow?.is_in_window ? "Registration open" : "Registration closed"}</strong><small>{selectedWindow ? `${selectedWindow.shift_label} registers from ${selectedWindow.verification_label}` : "No Data"}</small></span>
             </div>
             <input
               ref={camera.fileInputRef}
@@ -425,8 +569,10 @@ export function OperatorAdminPage({ machines, password }) {
               capture={camera.captureMode}
               onChange={chooseRegistrationImage}
             />
-            <div className={`operator-camera ${camera.imageData ? "has-image" : ""}`}>
-              {camera.imageData ? (
+            <div className={`operator-camera ${camera.imageData ? "has-image" : ""} ${camera.stream ? "is-live" : ""}`}>
+              {camera.stream ? (
+                <video ref={camera.videoRef} playsInline muted autoPlay />
+              ) : camera.imageData ? (
                 <img src={camera.imageData} alt="Operator registration preview" />
               ) : (
                 <div>
@@ -440,10 +586,17 @@ export function OperatorAdminPage({ machines, password }) {
                 </div>
               )}
             </div>
+            <canvas ref={camera.canvasRef} hidden />
             <div className="operator-registration-actions">
-              {camera.imageData && <button onClick={camera.clearImage}>Remove image</button>}
-              <button onClick={camera.openImagePicker}>{camera.imageData ? "Replace image" : camera.isMobileDevice ? "Open camera" : "Choose image"}</button>
-              <button className="primary" onClick={registerOperator} disabled={loading || !camera.imageData || !selectedWindow?.is_in_window}>{loading ? "Registering…" : "Register operator"}</button>
+              {(camera.imageData || camera.stream) && <button onClick={camera.clearImage}>Cancel Face</button>}
+              {camera.stream ? (
+                <button onClick={() => {
+                  try { camera.captureImage(); } catch (captureError) { setError(captureError.message); }
+                }}>Capture Face</button>
+              ) : (
+                <button onClick={camera.registerFace}>{camera.imageData ? "Replace Face" : "Register Face"}</button>
+              )}
+              <button className="primary" onClick={registerOperator} disabled={loading || !camera.imageData || !selectedWindow?.is_in_window || !selectedMachine}>{loading ? "Registering…" : "Register operator"}</button>
             </div>
           </section>
 
@@ -456,7 +609,7 @@ export function OperatorAdminPage({ machines, password }) {
                   <span><strong>{safeText(row.person_name)}</strong><small>{safeText(row.machine_name)}</small></span>
                   <span><strong>{getShiftLabel(row.shift_code)}</strong><small>{formatDate(row.shift_date)}</small></span>
                 </div>
-              )) : <div className="operator-empty-state">No data</div>}
+              )) : <div className="operator-empty-state">No Data</div>}
             </div>
           </section>
         </div>
@@ -480,7 +633,7 @@ export function OperatorAdminPage({ machines, password }) {
                     <th><strong>{formatDate(row.date)}</strong><span>{row.date === today ? "Today" : row.is_future ? "Future" : ""}</span></th>
                     {SHIFT_OPTIONS.map((shift) => <td key={shift.value}><MatrixCell cell={row.shifts?.[shift.value]} /></td>)}
                   </tr>
-                )) : <tr><td colSpan={4}><div className="operator-empty-state">No data</div></td></tr>}
+                )) : <tr><td colSpan={4}><div className="operator-empty-state">No Data</div></td></tr>}
               </tbody>
             </table>
           </div>

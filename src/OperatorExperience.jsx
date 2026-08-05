@@ -33,98 +33,131 @@ export function AdminHome({ onMachineSetup, onOperators }) {
   );
 }
 
+function isMobileCaptureDevice() {
+  if (typeof navigator === "undefined") return false;
+  if (typeof navigator.userAgentData?.mobile === "boolean") {
+    return navigator.userAgentData.mobile;
+  }
+
+  const mobileUserAgent = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent || "");
+  const coarsePointer = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)")?.matches;
+  return mobileUserAgent || Boolean(coarsePointer && navigator.maxTouchPoints > 1 && window.innerWidth <= 1024);
+}
+
 function useCamera() {
-  const [stream, setStream] = useState(null);
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
+  const [imageData, setImageData] = useState("");
+  const fileInputRef = useRef(null);
+  const isMobileDevice = useMemo(isMobileCaptureDevice, []);
 
-  async function startCamera() {
-    stopCamera();
-    const nextStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false,
+  function openImagePicker() {
+    fileInputRef.current?.click();
+  }
+
+  function clearImage() {
+    setImageData("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function readImageFile(file) {
+    return new Promise((resolve, reject) => {
+      if (!file) {
+        reject(new Error("No image was selected."));
+        return;
+      }
+      if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) {
+        reject(new Error("Use a JPG, PNG, or WebP image."));
+        return;
+      }
+      if (file.size > 12 * 1024 * 1024) {
+        reject(new Error("The image must be 12 MB or smaller."));
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("The selected image could not be read."));
+      reader.onload = () => {
+        const value = String(reader.result || "");
+        if (!value.startsWith("data:image/")) {
+          reject(new Error("The selected file is not a valid image."));
+          return;
+        }
+        setImageData(value);
+        resolve(value);
+      };
+      reader.readAsDataURL(file);
     });
-    setStream(nextStream);
-    if (videoRef.current) {
-      videoRef.current.srcObject = nextStream;
-      await videoRef.current.play();
-    }
-    return nextStream;
   }
 
-  function stopCamera() {
-    setStream((current) => {
-      current?.getTracks().forEach((track) => track.stop());
-      return null;
-    });
+  async function readImageEvent(event) {
+    const file = event.target.files?.[0];
+    if (!file) return "";
+    return readImageFile(file);
   }
 
-  function captureImage() {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas || !video.videoWidth || !video.videoHeight) {
-      throw new Error("Camera is not ready yet.");
-    }
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/jpeg", 0.9);
-  }
-
-  useEffect(() => () => {
-    stream?.getTracks().forEach((track) => track.stop());
-  }, [stream]);
-
-  return { stream, videoRef, canvasRef, startCamera, stopCamera, captureImage };
+  return {
+    imageData,
+    fileInputRef,
+    isMobileDevice,
+    captureMode: isMobileDevice ? "user" : undefined,
+    openImagePicker,
+    clearImage,
+    readImageEvent,
+  };
 }
 
 export function ConfirmationModal({ machine, theme, onClose, onConfirmed }) {
-  const [phase, setPhase] = useState("camera");
+  const [phase, setPhase] = useState("capture");
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const autoDetectRef = useRef(null);
   const camera = useCamera();
 
   useEffect(() => {
-    openAndDetect();
-    return () => window.clearTimeout(autoDetectRef.current);
+    setPhase("capture");
+    setResult(null);
+    setError("");
+    camera.clearImage();
   }, [machine.id]);
 
-  async function openAndDetect() {
-    setPhase("camera");
+  async function chooseOperatorImage(event) {
     setError("");
-    setResult(null);
     try {
-      await camera.startCamera();
-      window.clearTimeout(autoDetectRef.current);
-      autoDetectRef.current = window.setTimeout(detectOperator, 850);
-    } catch (cameraError) {
-      setError(`Camera unavailable: ${cameraError.message}`);
+      const image = await camera.readImageEvent(event);
+      if (!image) return;
+      await detectOperator(image);
+    } catch (imageError) {
+      setError(imageError.message);
       setPhase("error");
     }
   }
 
-  async function detectOperator() {
-    if (loading) return;
+  async function detectOperator(image) {
+    if (!image || loading) return;
     setLoading(true);
+    setPhase("detecting");
     setError("");
     try {
       const data = await postJson("/api/machine-check/detect", {
         machine: machine.id,
         machine_name: machine.name,
-        image: camera.captureImage(),
+        image,
       });
-      camera.stopCamera();
       setResult(data);
       setPhase(data.not_required ? "not-required" : "detected");
     } catch (detectError) {
-      camera.stopCamera();
       setError(detectError.message);
       setPhase("error");
     } finally {
       setLoading(false);
     }
+  }
+
+  function chooseAnotherImage() {
+    setError("");
+    setResult(null);
+    setPhase("capture");
+    camera.clearImage();
+    window.setTimeout(camera.openImagePicker, 0);
   }
 
   async function confirmOperator() {
@@ -152,13 +185,39 @@ export function ConfirmationModal({ machine, theme, onClose, onConfirmed }) {
     <div className="confirmation-backdrop" data-theme={theme} onClick={onClose}>
       <section className="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Operator confirmation" onClick={(event) => event.stopPropagation()}>
         <button className="confirmation-close" onClick={onClose} aria-label="Close">×</button>
+        <input
+          ref={camera.fileInputRef}
+          className="face-image-input"
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          capture={camera.captureMode}
+          onChange={chooseOperatorImage}
+        />
 
-        {phase === "camera" && (
-          <div className="confirmation-camera-stage">
-            <video ref={camera.videoRef} playsInline muted />
-            <canvas ref={camera.canvasRef} hidden />
-            <div className="confirmation-scan-frame" aria-hidden="true"><i /><i /><i /><i /></div>
-            <div className="confirmation-scanning"><i />{loading ? "Detecting operator" : "Look directly at the camera"}</div>
+        {(phase === "capture" || phase === "detecting") && (
+          <div className="confirmation-capture-stage">
+            {camera.imageData ? (
+              <img src={camera.imageData} alt="Selected operator face" />
+            ) : (
+              <div className="confirmation-capture-empty">
+                <i aria-hidden="true" />
+                <span>{camera.isMobileDevice ? "Camera capture" : "Image upload"}</span>
+                <h2>{camera.isMobileDevice ? "Take an operator photo" : "Choose an operator photo"}</h2>
+                <p>
+                  {camera.isMobileDevice
+                    ? "Your phone will open the front camera. Keep the operator's face centered and well lit."
+                    : "Live camera access stays off on laptops and desktops. Select a clear face image instead."}
+                </p>
+                <button className="primary" type="button" onClick={camera.openImagePicker}>
+                  {camera.isMobileDevice ? "Open camera" : "Choose image"}
+                </button>
+              </div>
+            )}
+            {phase === "detecting" && (
+              <div className="confirmation-detecting-overlay">
+                <div className="confirmation-scanning"><i />Detecting operator</div>
+              </div>
+            )}
           </div>
         )}
 
@@ -175,7 +234,7 @@ export function ConfirmationModal({ machine, theme, onClose, onConfirmed }) {
             </div>
             <p>Confirm that you checked this machine.</p>
             <div className="confirmation-actions">
-              <button onClick={openAndDetect}>Redetect</button>
+              <button onClick={chooseAnotherImage}>Use another image</button>
               <button className="primary" onClick={confirmOperator} disabled={loading}>{loading ? "Saving…" : "Confirm"}</button>
             </div>
           </div>
@@ -195,9 +254,9 @@ export function ConfirmationModal({ machine, theme, onClose, onConfirmed }) {
           <div className="confirmation-identity error">
             <div className="confirmation-error-mark" aria-hidden="true">!</div>
             <span>Face not confirmed</span>
-            <h2>Try again</h2>
+            <h2>Try another image</h2>
             <p>{safeText(error)}</p>
-            <div className="confirmation-actions"><button onClick={onClose}>Cancel</button><button className="primary" onClick={openAndDetect}>Redetect</button></div>
+            <div className="confirmation-actions"><button onClick={onClose}>Cancel</button><button className="primary" onClick={chooseAnotherImage}>{camera.isMobileDevice ? "Open camera" : "Choose image"}</button></div>
           </div>
         )}
       </section>
@@ -251,7 +310,6 @@ export function OperatorAdminPage({ machines, password }) {
   useEffect(() => {
     loadContext();
     loadOverview();
-    return () => camera.stopCamera();
   }, []);
 
   async function loadContext() {
@@ -286,8 +344,10 @@ export function OperatorAdminPage({ machines, password }) {
       setError("Enter the operator name.");
       return;
     }
-    if (!camera.stream) {
-      setError("Open the camera before registering the operator.");
+    if (!camera.imageData) {
+      setError(camera.isMobileDevice
+        ? "Take an operator photo before registering."
+        : "Choose an operator image before registering.");
       return;
     }
     setLoading(true);
@@ -300,9 +360,9 @@ export function OperatorAdminPage({ machines, password }) {
         machine: form.machine,
         machine_name: selectedMachine?.name,
         shift_code: form.shift_code,
-        image: camera.captureImage(),
+        image: camera.imageData,
       });
-      camera.stopCamera();
+      camera.clearImage();
       setMessage(data.message || "Operator registered.");
       setForm((current) => ({ ...current, person_name: "" }));
       await Promise.all([loadContext(), loadOverview()]);
@@ -313,21 +373,19 @@ export function OperatorAdminPage({ machines, password }) {
     }
   }
 
-  async function toggleRegistrationCamera() {
+  async function chooseRegistrationImage(event) {
     setError("");
-    if (camera.stream) {
-      camera.stopCamera();
-      return;
-    }
+    setMessage("");
     try {
-      await camera.startCamera();
-    } catch (cameraError) {
-      setError(`Camera unavailable: ${cameraError.message}`);
+      await camera.readImageEvent(event);
+    } catch (imageError) {
+      camera.clearImage();
+      setError(imageError.message);
     }
   }
 
   function selectTab(nextTab) {
-    camera.stopCamera();
+    camera.clearImage();
     setTab(nextTab);
     setError("");
     setMessage("");
@@ -359,13 +417,33 @@ export function OperatorAdminPage({ machines, password }) {
               <i aria-hidden="true" />
               <span><strong>{selectedWindow?.is_in_window ? "Registration open" : "Registration closed"}</strong><small>{selectedWindow ? `${selectedWindow.shift_label} registers from ${selectedWindow.verification_label}` : "No data"}</small></span>
             </div>
-            <div className="operator-camera">
-              {camera.stream ? <video ref={camera.videoRef} playsInline muted /> : <div><i aria-hidden="true" /><strong>Face registration</strong><span>The image is sent only for facial-recognition registration.</span></div>}
-              <canvas ref={camera.canvasRef} hidden />
+            <input
+              ref={camera.fileInputRef}
+              className="face-image-input"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              capture={camera.captureMode}
+              onChange={chooseRegistrationImage}
+            />
+            <div className={`operator-camera ${camera.imageData ? "has-image" : ""}`}>
+              {camera.imageData ? (
+                <img src={camera.imageData} alt="Operator registration preview" />
+              ) : (
+                <div>
+                  <i aria-hidden="true" />
+                  <strong>Face registration</strong>
+                  <span>
+                    {camera.isMobileDevice
+                      ? "Open the front camera and take a clear photo."
+                      : "Choose a clear face image from this laptop or desktop."}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="operator-registration-actions">
-              <button onClick={toggleRegistrationCamera}>{camera.stream ? "Close camera" : "Open camera"}</button>
-              <button className="primary" onClick={registerOperator} disabled={loading || !camera.stream || !selectedWindow?.is_in_window}>{loading ? "Registering…" : "Register operator"}</button>
+              {camera.imageData && <button onClick={camera.clearImage}>Remove image</button>}
+              <button onClick={camera.openImagePicker}>{camera.imageData ? "Replace image" : camera.isMobileDevice ? "Open camera" : "Choose image"}</button>
+              <button className="primary" onClick={registerOperator} disabled={loading || !camera.imageData || !selectedWindow?.is_in_window}>{loading ? "Registering…" : "Register operator"}</button>
             </div>
           </section>
 

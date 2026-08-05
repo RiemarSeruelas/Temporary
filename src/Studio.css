@@ -3600,3 +3600,477 @@
     grid-column: auto;
   }
 }
+
+/* =========================================================
+   AUGUST 2026 ALIGNMENT PATCH
+   - float every segment card
+   - keep point statuses on the right
+   - complete the admin login styling
+   - center the administration workspace cards
+   - use image upload on desktop and native camera capture on mobile
+========================================================= */
+
+/* Every machine segment floats, not only warning segments. */
+.studio-zone-card,
+.studio-zone-card.warning,
+.studio-zone-card.safe,
+.studio-zone-card.danger,
+.studio-zone-card.neutral {
+  animation: studioContainerFloat 5s ease-in-out infinite;
+  will-change: translate;
+}
+
+.studio-zone-rail .studio-zone-card:nth-child(2n) {
+  animation-delay: -2.4s;
+}
+
+.studio-zone-rail .studio-zone-card:nth-child(3n) {
+  animation-delay: -3.6s;
+}
+
+.studio-zone-rail.right .studio-zone-card:nth-child(odd) {
+  animation-delay: -1.25s;
+}
+
+/* Point identity stays on the left; all value/status pills stay on the right. */
+.studio-zone-detail-row {
+  grid-template-columns: 9px minmax(0, 1fr) auto;
+  grid-template-areas: "status identity values";
+  column-gap: 13px;
+  row-gap: 0;
+  min-height: 74px;
+}
+
+.studio-zone-detail-values {
+  grid-area: values;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 2px 0;
+  scrollbar-width: none;
+}
+
+.studio-zone-detail-values::-webkit-scrollbar {
+  display: none;
+}
+
+.studio-zone-detail-values em {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* Designed administration sign-in. */
+.admin-gate-backdrop {
+  background:
+    radial-gradient(circle at 50% 38%, rgba(119, 136, 255, .2), transparent 34%),
+    rgba(2, 5, 9, .82);
+  backdrop-filter: blur(18px) saturate(.78);
+}
+
+.admin-gate {
+  position: relative;
+  display: grid;
+  gap: 0;
+  width: min(100%, 460px);
+  padding: 30px;
+  overflow: hidden;
+  color: var(--paper-ink);
+  border-color: var(--paper-border);
+  border-radius: 24px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--paper-soft) 58%, transparent), transparent 42%),
+    var(--paper-canvas);
+  box-shadow: 0 38px 110px rgba(0, 0, 0, .58), inset 0 1px 0 rgba(255, 255, 255, .08);
+}
+
+.admin-gate::before {
+  position: absolute;
+  top: -90px;
+  right: -70px;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--paper-blue) 16%, transparent);
+  filter: blur(4px);
+  content: "";
+  pointer-events: none;
+}
+
+.admin-gate-brand {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 48px;
+  height: 48px;
+  grid-template-columns: repeat(2, 10px);
+  grid-template-rows: repeat(2, 10px);
+  place-content: center;
+  gap: 4px;
+  margin-bottom: 22px;
+  color: var(--paper-blue);
+  border: 1px solid var(--paper-border);
+  border-radius: 15px;
+  background: var(--paper-soft);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .12);
+}
+
+.admin-gate-brand i {
+  display: block;
+  border-radius: 3px;
+  background: currentColor;
+}
+
+.admin-gate-brand i:nth-child(2),
+.admin-gate-brand i:nth-child(3) {
+  opacity: .45;
+}
+
+.admin-gate-heading {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 18px;
+}
+
+.admin-gate-heading > div {
+  display: grid;
+  gap: 5px;
+}
+
+.admin-gate-heading span {
+  color: var(--paper-blue);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.admin-gate-heading h2 {
+  margin: 0;
+  color: var(--paper-ink);
+  font-size: clamp(25px, 4vw, 34px);
+  font-weight: 650;
+  letter-spacing: -.045em;
+  line-height: 1.05;
+}
+
+.admin-gate-heading p {
+  max-width: 340px;
+  margin: 5px 0 0;
+  color: var(--paper-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.admin-gate-heading > button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  padding: 0;
+  color: var(--paper-muted);
+  border: 1px solid var(--paper-border);
+  border-radius: 10px;
+  background: var(--paper-soft);
+  cursor: pointer;
+  font-size: 20px;
+}
+
+.admin-gate-heading > button:hover {
+  color: var(--paper-ink);
+  border-color: var(--paper-border-strong);
+  background: color-mix(in srgb, var(--paper-soft) 72%, var(--paper-blue-soft));
+}
+
+.admin-gate > label {
+  position: relative;
+  z-index: 1;
+  margin: 24px 0 7px;
+  color: var(--paper-muted);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.admin-password-field {
+  position: relative;
+  z-index: 1;
+}
+
+.admin-password-field input {
+  width: 100%;
+  height: 46px;
+  padding: 0 48px 0 13px;
+  color: var(--paper-ink);
+  border: 1px solid var(--paper-border);
+  border-radius: 11px;
+  outline: none;
+  background: var(--paper-soft);
+  font-size: 12px;
+}
+
+.admin-password-field input:focus {
+  border-color: var(--paper-blue);
+  box-shadow: 0 0 0 3px var(--paper-blue-soft);
+}
+
+.admin-password-field > button {
+  top: 5px;
+  right: 5px;
+}
+
+.admin-gate-error {
+  position: relative;
+  z-index: 1;
+  margin-top: 10px;
+  padding: 9px 11px;
+  color: var(--paper-red);
+  border: 1px solid color-mix(in srgb, var(--paper-red) 32%, transparent);
+  border-radius: 9px;
+  background: var(--paper-red-soft);
+  font-size: 10px;
+}
+
+.admin-gate-actions {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.admin-gate-actions button {
+  height: 43px;
+  color: var(--paper-ink);
+  border: 1px solid var(--paper-border);
+  border-radius: 10px;
+  background: var(--paper-soft);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.admin-gate-actions button[type="submit"] {
+  color: #fff;
+  border-color: var(--paper-blue);
+  background: var(--paper-blue);
+}
+
+.admin-gate-actions button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+/* Center the artwork and copy in Choosing a workspace. */
+.admin-hub-card {
+  position: relative;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto;
+  justify-items: center;
+  align-content: center;
+  gap: 18px;
+  text-align: center;
+}
+
+.admin-hub-card > span {
+  justify-items: center;
+}
+
+.admin-hub-card > em {
+  position: absolute;
+  top: 50%;
+  right: 24px;
+  transform: translateY(-50%);
+}
+
+/* At the first machine, the left side is intentionally completely empty. */
+.configurator-swipe-empty {
+  min-width: 0;
+  min-height: 176px;
+}
+
+/* Native image capture: mobile opens the front camera; desktop opens a file picker. */
+.face-image-input {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  clip-path: inset(50%);
+}
+
+.operator-camera img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 220px;
+  object-fit: cover;
+}
+
+.operator-camera.has-image::after {
+  position: absolute;
+  inset: 0;
+  border: 1px solid color-mix(in srgb, var(--admin-accent) 45%, transparent);
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
+}
+
+.confirmation-capture-stage {
+  position: relative;
+  display: grid;
+  min-height: 520px;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--confirm-accent) 18%, transparent), transparent 34%),
+    var(--confirm-bg);
+}
+
+.confirmation-capture-stage > img {
+  display: block;
+  width: 100%;
+  height: min(620px, calc(100dvh - 40px));
+  min-height: 440px;
+  object-fit: cover;
+}
+
+.confirmation-capture-empty {
+  display: grid;
+  width: min(520px, calc(100% - 44px));
+  justify-items: center;
+  gap: 9px;
+  padding: 46px 32px;
+  text-align: center;
+  border: 1px solid var(--confirm-line);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--confirm-panel) 94%, transparent);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .24);
+}
+
+.confirmation-capture-empty > i {
+  position: relative;
+  width: 68px;
+  height: 68px;
+  margin-bottom: 12px;
+  border: 2px solid var(--confirm-muted);
+  border-radius: 50%;
+}
+
+.confirmation-capture-empty > i::after {
+  position: absolute;
+  top: 70px;
+  left: 50%;
+  width: 94px;
+  height: 43px;
+  border: 2px solid var(--confirm-muted);
+  border-radius: 26px 26px 10px 10px;
+  content: "";
+  transform: translateX(-50%);
+}
+
+.confirmation-capture-empty > span {
+  margin-top: 38px;
+  color: var(--confirm-muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.confirmation-capture-empty h2 {
+  margin: 0;
+  color: var(--confirm-text);
+  font-size: clamp(25px, 5vw, 40px);
+  font-weight: 620;
+  letter-spacing: -.04em;
+}
+
+.confirmation-capture-empty p {
+  max-width: 390px;
+  margin: 3px 0 12px;
+  color: var(--confirm-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.confirmation-capture-empty button {
+  min-width: 170px;
+  height: 44px;
+  color: var(--confirm-bg);
+  border: 1px solid var(--confirm-accent);
+  border-radius: 10px;
+  background: var(--confirm-accent);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.confirmation-detecting-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: end center;
+  padding-bottom: 28px;
+  background: linear-gradient(transparent 42%, rgba(0, 0, 0, .68));
+}
+
+.confirmation-detecting-overlay .confirmation-scanning {
+  position: static;
+  transform: none;
+}
+
+@media (max-width: 680px) {
+  .studio-zone-detail-row {
+    grid-template-columns: 7px minmax(0, 1fr) auto;
+    gap: 8px;
+    min-height: 64px;
+    padding: 10px;
+  }
+
+  .studio-zone-detail-values {
+    max-width: 48vw;
+    gap: 5px;
+  }
+
+  .studio-zone-detail-row em {
+    height: 26px;
+    padding-inline: 8px;
+    font-size: 8px;
+  }
+
+  .admin-gate {
+    padding: 24px 20px 20px;
+    border-radius: 20px;
+  }
+
+  .admin-gate-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-hub-card > em {
+    right: 16px;
+  }
+
+  .confirmation-capture-empty {
+    width: calc(100% - 28px);
+    padding: 38px 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-zone-card,
+  .studio-zone-card.warning,
+  .studio-zone-card.safe,
+  .studio-zone-card.danger,
+  .studio-zone-card.neutral {
+    animation: none;
+    translate: none;
+  }
+}

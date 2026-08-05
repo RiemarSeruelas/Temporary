@@ -412,11 +412,12 @@ export default function App() {
       {adminAccessOpen && (
         <div className="admin-gate-backdrop" data-theme={theme} onClick={closeAdminGate}>
           <form className="admin-gate" onSubmit={enterAsAdmin} onClick={(event) => event.stopPropagation()}>
+            <div className="admin-gate-brand" aria-hidden="true"><i /><i /><i /><i /></div>
             <div className="admin-gate-heading">
-              <div><span>Administration</span><h2>Open machine setup</h2></div>
+              <div><span>Administration</span><h2>Open machine setup</h2><p>Enter the administrator password to manage machines and operator assignments.</p></div>
               <button type="button" onClick={closeAdminGate} aria-label="Close">×</button>
             </div>
-            <label htmlFor="dashboard-admin-password">Password</label>
+            <label htmlFor="dashboard-admin-password">Admin password</label>
             <div className="admin-password-field">
               <input
                 id="dashboard-admin-password"
@@ -1184,22 +1185,25 @@ function MachineConfigurationPage({
               event.stopPropagation();
             }}
           >
-            <button
-              type="button"
-              className="configurator-swipe-preview previous"
-              onClick={() => moveGalleryTo(galleryIndex - 1)}
-              disabled={!previousGalleryItem}
-              aria-label="Previous machine"
-            >
-              <span className="configurator-swipe-direction">← Previous</span>
-              <span className="configurator-swipe-preview-content floating-media">
-                {previousGalleryItem && !previousGalleryItem.isAddMore && (
-                  <img src={previousGalleryItem.image?.url || machineImage} alt="" />
-                )}
-                {previousGalleryItem?.isAddMore && <i aria-hidden="true">+</i>}
-                <strong>{previousGalleryItem?.name || "Start of list"}</strong>
-              </span>
-            </button>
+            {previousGalleryItem ? (
+              <button
+                type="button"
+                className="configurator-swipe-preview previous"
+                onClick={() => moveGalleryTo(galleryIndex - 1)}
+                aria-label="Previous machine"
+              >
+                <span className="configurator-swipe-direction">← Previous</span>
+                <span className="configurator-swipe-preview-content floating-media">
+                  {!previousGalleryItem.isAddMore && (
+                    <img src={previousGalleryItem.image?.url || machineImage} alt="" />
+                  )}
+                  {previousGalleryItem.isAddMore && <i aria-hidden="true">+</i>}
+                  <strong>{previousGalleryItem.name}</strong>
+                </span>
+              </button>
+            ) : (
+              <div className="configurator-swipe-empty" aria-hidden="true" />
+            )}
 
             <button
               key={activeGalleryItem?.id}

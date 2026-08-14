@@ -137,13 +137,13 @@ Open the Machine Monitoring Dashboard from the approved internal network.
 For the Docker host:
 
 ```text
-http://localhost:5059
+http://localhost:5054
 ```
 
 From another permitted computer:
 
 ```text
-http://SERVER_IP:5059
+http://SERVER_IP:5054
 ```
 
 Replace `SERVER_IP` with the IP address of the computer running Docker.
@@ -389,7 +389,7 @@ Create `.env` in the main project folder.
 Example:
 
 ```env
-APP_PORT=5059
+APP_PORT=5054
 
 POSTGRES_ENABLED=true
 POSTGRES_HOST=your_database_host
@@ -454,16 +454,16 @@ The backend should become healthy before Nginx starts serving the application.
 On the Docker host:
 
 ```text
-http://localhost:5059
+http://localhost:5054
 ```
 
 From another permitted computer:
 
 ```text
-http://SERVER_IP:5059
+http://SERVER_IP:5054
 ```
 
-The Windows firewall and plant network must allow access to port `5059`.
+The Windows firewall and plant network must allow access to port `5054`.
 
 ### Check Network Access to PostgreSQL
 
@@ -484,7 +484,7 @@ TcpTestSucceeded : True
 On the host:
 
 ```powershell
-curl.exe http://localhost:5059/health
+curl.exe http://localhost:5054/health
 ```
 
 ### Check Container Logs
@@ -700,13 +700,13 @@ docker compose logs --tail=200 backend
 On the other computer:
 
 ```powershell
-Test-NetConnection SERVER_IP -Port 5059
+Test-NetConnection SERVER_IP -Port 5054
 ```
 
 If it fails:
 
 - Confirm both computers are on the approved plant network
-- Confirm the Docker host firewall allows port `5059`
+- Confirm the Docker host firewall allows port `5054`
 - Confirm Nginx is running
 - Confirm the Docker host IP is correct
 
@@ -886,6 +886,6 @@ Before production / UAT deployment, confirm:
 - Face recognition works
 - Machine confirmation works
 - Session logs are created
-- Another permitted computer can open port `5059`
+- Another permitted computer can open port `5054`
 - `.env` is not committed to Git
 - PostgreSQL backup procedure is available

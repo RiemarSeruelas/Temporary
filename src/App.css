@@ -233,58 +233,6 @@ button:hover {
   transform: translate(-50%, -50%);
 }
 
-.machine-3d-view {
-  background: radial-gradient(circle at 50% 35%, #2563eb24, #0000 32%), linear-gradient(#f8fbff 0%, #edf3ff 100%);
-  border: 1px solid #3b82f62e;
-  border-radius: 18px;
-  flex: 1;
-  height: 100%;
-  min-height: 0;
-  position: relative;
-  overflow: hidden;
-  box-shadow: inset 0 0 0 1px #ffffffb8;
-}
-
-.real-glb-view, .machine-3d-view.real-glb-view {
-  background: radial-gradient(circle at 50% 35%, #2563eb1a, #0000 34%), linear-gradient(#f8fbff 0%, #eef4ff 100%);
-  height: 100%;
-  min-height: 0;
-  position: relative;
-  overflow: hidden;
-}
-
-.machine-3d-canvas canvas {
-  cursor: grab;
-  outline: none;
-  display: block;
-  width: 100% !important;
-  height: 100% !important;
-}
-
-.machine-3d-canvas canvas:active {
-  cursor: grabbing;
-}
-
-.machine-3d-view.embedded-3d-map, .real-glb-view.embedded-3d-map {
-  background: radial-gradient(circle at 50% 42%, #2563eb1a, #0000 42%), linear-gradient(#f8fbff 0%, #edf3ff 100%);
-  border: 1px solid #3b82f62e;
-  border-radius: 18px;
-  flex: 1;
-  height: 100%;
-  min-height: 0;
-  position: relative;
-  overflow: hidden;
-  box-shadow: inset 0 0 0 1px #ffffffb8;
-}
-
-.machine-3d-canvas {
-  z-index: 5;
-  display: block;
-  inset: 0;
-  width: 100% !important;
-  height: 100% !important;
-  position: absolute !important;
-}
 
 @media (max-width: 480px) {
   .machine-map {
@@ -297,16 +245,8 @@ button:hover {
     padding: 0 6px;
     font-size: 7px;
   }
-
-  .machine-3d-view, .machine-3d-view.real-glb-view, .machine-3d-view.embedded-3d-map, .real-glb-view.embedded-3d-map {
-    height: 320px;
-    min-height: 320px;
-  }
 }
 
-.zone-wrap-3d-view .machine-3d-canvas canvas {
-  touch-action: none;
-}
 
 @keyframes studioPickerIn {
   from {
@@ -1158,7 +1098,7 @@ button:hover {
   overflow: hidden;
 }
 
-.studio-machine-frame .machine-map, .studio-machine-frame .machine-3d-view, .studio-machine-frame .machine-3d-view.embedded-3d-map, .studio-machine-frame .real-glb-view.embedded-3d-map {
+.studio-machine-frame .machine-map {
   background: var(--studio-panel-strong);
   width: 100%;
   box-shadow: none;
@@ -3784,18 +3724,22 @@ button:hover {
 }
 
 .admin-hub-card {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-height: 220px;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto;
+  justify-items: center;
+  align-content: center;
+  gap: 18px;
+  padding: 28px 72px;
   color: var(--admin-text);
   cursor: pointer;
-  text-align: left;
+  text-align: center;
   border: 1px solid var(--admin-line);
-  background: color-mix(in srgb, var(--admin-panel) 96%, transparent);
   border-radius: 24px;
-  grid-template-columns: 86px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 20px;
-  min-height: 190px;
-  padding: 28px;
-  display: grid;
+  background: color-mix(in srgb, var(--admin-panel) 96%, transparent);
   box-shadow: 0 26px 70px #0000002e;
 }
 
@@ -3808,8 +3752,11 @@ button:hover {
 }
 
 .admin-hub-card > span {
-  gap: 6px;
   display: grid;
+  width: 100%;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
 }
 
 .admin-hub-card small {
@@ -3827,9 +3774,14 @@ button:hover {
 }
 
 .admin-hub-card > em {
+  position: absolute;
+  top: 50%;
+  right: 28px;
+  margin: 0;
   color: var(--admin-accent);
   font-size: 26px;
   font-style: normal;
+  transform: translateY(-50%);
 }
 
 .admin-hub-icon {
@@ -3841,6 +3793,9 @@ button:hover {
   height: 86px;
   display: grid;
   position: relative;
+  justify-self: center;
+  align-self: center;
+  margin-inline: auto;
 }
 
 .admin-hub-icon.machine-icon {
@@ -4666,16 +4621,6 @@ button:hover {
 
 .confirmation-actions button:disabled { cursor: wait; opacity: .55; }
 
-.machine-3d-loading {
-  color: var(--studio-muted);
-  background: var(--studio-panel);
-  border-radius: 12px;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  font-size: 11px;
-  display: grid;
-}
 
 /* =========================================================
    RESPONSIVE SEGMENT RAILS AND OPERATOR VIEWS
@@ -4772,12 +4717,7 @@ button:hover {
 }
 
 /* =========================================================
-   AUGUST 2026 ALIGNMENT PATCH
-   - float every segment card
-   - keep point statuses on the right
-   - complete the admin login styling
-   - center the administration workspace cards
-   - use image upload on desktop and native camera capture on mobile
+   ACTIVE DASHBOARD AND ADMIN COMPONENTS
 ========================================================= */
 
 /* Every machine segment floats, not only warning segments. */
@@ -4987,6 +4927,13 @@ button:hover {
   box-shadow: 0 0 0 3px var(--paper-blue-soft);
 }
 
+.admin-password-field input::-ms-reveal,
+.admin-password-field input::-ms-clear {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 .admin-password-field > button {
   top: 5px;
   right: 5px;
@@ -5036,26 +4983,7 @@ button:hover {
 }
 
 /* Center the artwork and copy in Choosing a workspace. */
-.admin-hub-card {
-  position: relative;
-  grid-template-columns: 1fr;
-  grid-template-rows: auto auto;
-  justify-items: center;
-  align-content: center;
-  gap: 18px;
-  text-align: center;
-}
 
-.admin-hub-card > span {
-  justify-items: center;
-}
-
-.admin-hub-card > em {
-  position: absolute;
-  top: 50%;
-  right: 24px;
-  transform: translateY(-50%);
-}
 
 /* At the first machine, the left side is intentionally completely empty. */
 .configurator-swipe-empty {
@@ -5247,20 +5175,12 @@ button:hover {
 
 
 /* =========================================================
-   AUGUST 05, 2026 — 3D upload, true No Data states, compact gallery
+   NO DATA, COMPACT GALLERY, AND OPERATOR COMPONENTS
 ========================================================= */
 
 /* Keep the workspace selection cards balanced and the icon centered. */
 .admin-hub-options {
   grid-template-columns: repeat(2, minmax(260px, 370px));
-}
-.admin-hub-card {
-  width: 100%;
-  min-height: 220px;
-  padding: 26px 48px 26px 26px;
-}
-.admin-hub-icon {
-  margin-inline: auto;
 }
 
 /* The machine directory must always leave room for the bottom copy/actions. */
@@ -5295,18 +5215,6 @@ button:hover {
 .configurator-image-no-data,
 .segment-editor-no-data,
 .machine-no-data,
-.machine-3d-no-data {
-  color: var(--admin-muted, var(--studio-muted));
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  min-height: 120px;
-  font-size: 10px;
-  font-weight: 800;
-  display: grid;
-}
 .configurator-swipe-preview-content .configurator-image-no-data {
   width: 92px;
   height: 62px;
@@ -5315,55 +5223,6 @@ button:hover {
   border-radius: 12px;
 }
 
-.machine-model-upload-row {
-  border: 1px solid var(--admin-line, #2d3338);
-  background: var(--admin-field, #101315);
-  border-radius: 10px;
-  justify-content: space-between;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 12px;
-  padding: 11px 12px;
-  display: flex;
-}
-.machine-model-upload-row > div:first-child {
-  min-width: 0;
-  gap: 3px;
-  display: grid;
-}
-.machine-model-upload-row strong { font-size: 10px; }
-.machine-model-upload-row small {
-  color: var(--admin-muted, #7f8990);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 8px;
-  overflow: hidden;
-}
-.machine-model-upload-actions {
-  flex: none;
-  align-items: center;
-  gap: 7px;
-  display: flex;
-}
-.machine-model-upload,
-.machine-model-upload-actions button {
-  color: var(--admin-text, #edf0f2);
-  border: 1px solid var(--admin-line, #373d42);
-  background: var(--admin-panel-strong, #20252a);
-  cursor: pointer;
-  border-radius: 8px;
-  align-items: center;
-  height: 30px;
-  padding: 0 10px;
-  font-size: 9px;
-  font-weight: 750;
-  display: inline-flex;
-}
-.machine-model-upload input { display: none; }
-.machine-3d-no-data {
-  color: var(--studio-muted);
-  background: var(--studio-panel-strong);
-}
 .studio-machine-card-image small,
 .studio-machine-picker-list > button > span small {
   color: var(--studio-muted);
@@ -5416,41 +5275,8 @@ button:hover {
   .operator-admin-heading { align-items: stretch; flex-direction: column; }
   .operator-heading-actions { justify-content: space-between; }
   .operator-download-button { flex: 1; }
-  .machine-model-upload-row { align-items: stretch; flex-direction: column; }
-  .machine-model-upload-actions { justify-content: flex-end; }
 }
 
-
-
-
-/* Center the workspace artwork independently of the right-side arrow. */
-.admin-hub-card {
-  position: relative !important;
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 18px !important;
-  padding: 26px 58px !important;
-  text-align: center !important;
-}
-.admin-hub-card > .admin-hub-icon {
-  flex: 0 0 auto;
-  margin: 0 auto !important;
-  align-self: center !important;
-}
-.admin-hub-card > span {
-  display: grid !important;
-  justify-items: center !important;
-  width: 100%;
-}
-.admin-hub-card > em {
-  position: absolute !important;
-  top: 50% !important;
-  right: 24px !important;
-  margin: 0 !important;
-  transform: translateY(-50%) !important;
-}
 
 /* Data Mapping now has one or as many fields as a point needs. */
 .point-mapping-table.flexible-fields {
@@ -5501,24 +5327,6 @@ button:hover {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 .field-fallback {
   margin-top: 10px;
 }
@@ -5528,7 +5336,6 @@ button:hover {
   
   
 }
-
 
 
 /* Keep Add Field beside the field it belongs to instead of below the row. */
@@ -5614,106 +5421,6 @@ button:hover {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-@media (max-width: 1180px) {
-  
-}
-
 @media (max-width: 760px) {
   
 
@@ -5734,122 +5441,12 @@ button:hover {
 }
 
 
-
 /* Guarantee the workspace artwork is centered independently of the arrow. */
-.admin-hub-card {
-  position: relative !important;
-  display: grid !important;
-  grid-template-columns: 1fr !important;
-  grid-template-rows: auto auto !important;
-  justify-items: center !important;
-  align-content: center !important;
-  gap: 18px !important;
-  padding: 28px 72px !important;
-  text-align: center !important;
-}
 
-.admin-hub-card > .admin-hub-icon {
-  position: relative !important;
-  inset: auto !important;
-  justify-self: center !important;
-  align-self: center !important;
-  margin: 0 !important;
-  transform: none !important;
-}
-
-.admin-hub-card > span {
-  width: 100% !important;
-  justify-items: center !important;
-  text-align: center !important;
-}
-
-.admin-hub-card > em {
-  position: absolute !important;
-  top: 50% !important;
-  right: 28px !important;
-  margin: 0 !important;
-  transform: translateY(-50%) !important;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-@media (max-width: 1220px) {
-  
-
-  
-}
 
 @media (max-width: 760px) {
   .admin-hub-card {
-    padding: 24px 58px !important;
+    padding: 24px 58px;
   }
 
   .admin-hub-card > em {

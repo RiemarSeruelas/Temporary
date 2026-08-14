@@ -80,7 +80,7 @@ ALTER TABLE machine_monitoring.machine_configurations
 
 CREATE TABLE IF NOT EXISTS machine_monitoring.operator_shift_registrations (
   id BIGSERIAL PRIMARY KEY,
-  person_id INTEGER NOT NULL REFERENCES machine_monitoring.face_people(id)
+  person_id INTEGER NOT NULL REFERENCES machine_monitoring.face_people(id),
   person_name TEXT NOT NULL,
   machine_id TEXT NOT NULL,
   machine_name TEXT NOT NULL,

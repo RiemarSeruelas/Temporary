@@ -47,7 +47,7 @@ const APP_NAMESPACE = process.env.APP_NAMESPACE || "machine_dashboard";
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "").trim();
 const FACE_UNREGISTER_PATH = process.env.FACE_UNREGISTER_PATH || "";
 
-const POSTGRES_SCHEMA = process.env.POSTGRES_SCHEMA || "app";
+const POSTGRES_SCHEMA = process.env.POSTGRES_SCHEMA || "machine_monitoring";
 const PEOPLE_TABLE = process.env.POSTGRES_PEOPLE_TABLE || "face_people";
 const CONFIRMATIONS_TABLE = process.env.POSTGRES_CONFIRMATIONS_TABLE || "machine_check_confirmations";
 const OPERATOR_REGISTRATIONS_TABLE = process.env.POSTGRES_OPERATOR_REGISTRATIONS_TABLE || "operator_shift_registrations";

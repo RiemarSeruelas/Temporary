@@ -1,8 +1,7 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import { AdminHome, ConfirmationModal, OperatorAdminPage } from "./OperatorExperience";
 
-const Machine3DView = lazy(() => import("./Machine3DView"));
 
 console.log(
   "%cMade by Riemar R. Seruelas Jr - Data Digital Intern",
@@ -26,27 +25,8 @@ console.log(
      interlockOk = true means healthy
 ========================================================= */
 
-/* Machine points, segments, images, and 3D models now come only from the API.
+/* Machine points, segments, and images now come only from the API.
    No sample runtime machine data is bundled in the frontend. */
-
-const MACHINE_3D_MODEL_SETTINGS = {
-  // Higher number = bigger model.
-  scale: 2.35,
-
-  // Move whole model in 3D space: [left/right, up/down, front/back]
-  position: [0, -0.55, 0],
-
-  // Rotate whole model in radians: [x, y, z]
-  rotation: [0, 0, 0],
-
-  // Camera starts zoomed in. Smaller distance = closer view.
-  cameraPosition: [2.7, 1.45, 2.75],
-  cameraFov: 28,
-
-  // Orbit center. Adjust if the rotation point feels off.
-  controlsTarget: [0, 0.2, 0],
-
-};
 
 const DEFAULT_MACHINE_RECORD = {
   id: "mespack",
@@ -90,6 +70,366 @@ function cloneValueRules(valueRules) {
   };
 }
 
+function cloneFieldValueRules(valueRules, fallbackRules = DEFAULT_POINT_VALUE_RULES.primary) {
+  return Array.isArray(valueRules) && valueRules.length
+    ? valueRules.map((rule) => ({ ...rule }))
+    : fallbackRules.map((rule) => ({ ...rule }));
+}
+
+function normalizePointSourceFields(point) {
+  const explicit = Array.isArray(point?.source_fields) ? point.source_fields : [];
+  if (explicit.length) {
+    return explicit.map((field, index) => ({
+      id: field.id || `field-${index + 1}`,
+      label: field.label || `Field ${index + 1}`,
+      source_key: field.source_key || field.key || "",
+      value_rules: cloneFieldValueRules(field.value_rules, index === 1 ? DEFAULT_POINT_VALUE_RULES.secondary : DEFAULT_POINT_VALUE_RULES.primary),
+      fallback: {
+        ...DEFAULT_POINT_VALUE_RULES.fallback,
+        ...(field.fallback && typeof field.fallback === "object" ? field.fallback : {}),
+      },
+    }));
+  }
+
+  const legacyRules = cloneValueRules(point?.value_rules);
+  const fields = [];
+  if (point?.source_key_primary) {
+    fields.push({
+      id: "field-1",
+      label: "Field 1",
+      source_key: point.source_key_primary,
+      value_rules: cloneFieldValueRules(legacyRules.primary, DEFAULT_POINT_VALUE_RULES.primary),
+      fallback: { ...legacyRules.fallback },
+    });
+  }
+  if (point?.source_key_secondary) {
+    fields.push({
+      id: "field-2",
+      label: "Field 2",
+      source_key: point.source_key_secondary,
+      value_rules: cloneFieldValueRules(legacyRules.secondary, DEFAULT_POINT_VALUE_RULES.secondary),
+      fallback: { ...legacyRules.fallback },
+    });
+  }
+  return fields;
+}
+
+function syncPointFieldsForSave(point) {
+  const sourceFields = normalizePointSourceFields(point);
+  const firstField = sourceFields[0];
+  const secondField = sourceFields[1];
+  return {
+    ...point,
+    source_fields: sourceFields,
+    source_key_primary: firstField?.source_key || "",
+    source_key_secondary: secondField?.source_key || null,
+    value_rules: {
+      primary: firstField?.value_rules || [],
+      secondary: secondField?.value_rules || [],
+      fallback: { ...(firstField?.fallback || DEFAULT_POINT_VALUE_RULES.fallback) },
+    },
+  };
+}
+
+function newLogicCondition(index = 0) {
+  return {
+    id: `condition-${Date.now()}-${index}`,
+    type: "field",
+    field_key: "",
+    operator: "equals",
+    expected_value: "1",
+    field_keys: [],
+    comparator: "exactly",
+    count: 1,
+  };
+}
+
+function normalizeLogicCondition(condition, index = 0) {
+  const type = condition?.type === "group" ? "group" : "field";
+  return {
+    id: condition?.id || `condition-${index + 1}`,
+    type,
+    field_key: condition?.field_key || "",
+    operator: condition?.operator === "not_equals" ? "not_equals" : "equals",
+    expected_value: String(condition?.expected_value ?? "1"),
+    field_keys: Array.isArray(condition?.field_keys)
+      ? [...new Set(condition.field_keys.filter(Boolean))]
+      : [],
+    comparator: ["exactly", "at_least", "at_most", "all", "any"].includes(condition?.comparator)
+      ? condition.comparator
+      : "exactly",
+    count: Math.max(0, Number(condition?.count ?? 1)),
+  };
+}
+
+function cloneLogicRules(value) {
+  return (Array.isArray(value) ? value : []).map((rule, index) => {
+    if (Array.isArray(rule?.conditions)) {
+      return {
+        id: rule.id || `logic-${index + 1}`,
+        name: rule.name || `Logic rule ${index + 1}`,
+        enabled: rule.enabled !== false,
+        condition_join: rule.condition_join === "any" ? "any" : "all",
+        conditions: rule.conditions.map((condition, conditionIndex) => normalizeLogicCondition(condition, conditionIndex)),
+        action: ["safe", "warning", "danger", "neutral", "ignore"].includes(rule.action) ? rule.action : "safe",
+        target_mode: rule.target_mode === "selected" ? "selected" : "conditions",
+        target_field_keys: Array.isArray(rule.target_field_keys)
+          ? [...new Set(rule.target_field_keys.filter(Boolean))]
+          : [],
+        template: rule.template || "custom",
+      };
+    }
+
+    // Backward compatibility with the first Logic Rules format.
+    const legacyFields = Array.isArray(rule?.field_keys)
+      ? [...new Set(rule.field_keys.filter(Boolean))]
+      : [];
+    const legacyMode = ["count", "all", "any"].includes(rule?.match_mode) ? rule.match_mode : "count";
+    const legacyComparator = legacyMode === "all"
+      ? "all"
+      : legacyMode === "any"
+        ? "any"
+        : ["exactly", "at_least", "at_most"].includes(rule?.comparator)
+          ? rule.comparator
+          : "exactly";
+
+    return {
+      id: rule?.id || `logic-${index + 1}`,
+      name: rule?.name || `Logic rule ${index + 1}`,
+      enabled: rule?.enabled !== false,
+      condition_join: "all",
+      conditions: [{
+        id: `legacy-condition-${index + 1}`,
+        type: "group",
+        field_key: "",
+        operator: "equals",
+        expected_value: String(rule?.expected_value ?? "0"),
+        field_keys: legacyFields,
+        comparator: legacyComparator,
+        count: Math.max(0, Number(rule?.count ?? 1)),
+      }],
+      action: rule?.action === "ignore" ? "ignore" : "safe",
+      target_mode: "conditions",
+      target_field_keys: [],
+      template: "custom",
+    };
+  });
+}
+
+function newLogicRule(index = 0) {
+  return {
+    id: `logic-${Date.now()}-${index}`,
+    name: `Logic rule ${index + 1}`,
+    enabled: true,
+    condition_join: "all",
+    conditions: [newLogicCondition(0)],
+    action: "safe",
+    target_mode: "conditions",
+    target_field_keys: [],
+    template: "custom",
+  };
+}
+
+const LOGIC_SCENARIOS = [
+  {
+    id: "interchangeable",
+    title: "Interchangeable signals",
+    badge: "Exactly X",
+    description: "Use when several switches can trade states and a certain number being ON/OFF is still normal.",
+    example: "Example: Doors 36–39 are healthy when exactly 2 of the 4 signals are 0.",
+  },
+  {
+    id: "redundant",
+    title: "All signals must agree",
+    badge: "All",
+    description: "Use for redundant guards or sensors where every selected signal must show the expected value.",
+    example: "Example: both guard switches must be 1 before the guard is considered healthy.",
+  },
+  {
+    id: "either",
+    title: "Any signal is enough",
+    badge: "Any",
+    description: "Use when more than one sensor can prove the same condition and any one of them is acceptable.",
+    example: "Example: Sensor A or Sensor B can confirm product presence.",
+  },
+  {
+    id: "voting",
+    title: "Voting / majority",
+    badge: "At least X",
+    description: "Use when a minimum number of sensors must agree before the condition is accepted.",
+    example: "Example: at least 2 of 3 safety sensors must read 1.",
+  },
+  {
+    id: "mode_ignore",
+    title: "Ignore during a mode",
+    badge: "A + B",
+    description: "Use when a signal is normally a warning but should be ignored during cleaning, setup, maintenance, or another mode.",
+    example: "Example: Cleaning Mode = 1 AND Door 5 = 0 → ignore Door 5.",
+  },
+  {
+    id: "exclusive",
+    title: "Only one should be active",
+    badge: "Exactly 1",
+    description: "Use for opposite-position sensors where one must be ON and the other OFF.",
+    example: "Example: Extended and Retracted sensors are healthy when exactly one is 1.",
+  },
+];
+
+function logicScenarioRule(template, index = 0) {
+  const base = newLogicRule(index);
+  const group = (comparator, count, expectedValue = "1") => ({
+    ...newLogicCondition(0),
+    type: "group",
+    comparator,
+    count,
+    expected_value: expectedValue,
+    field_key: "",
+    field_keys: [],
+  });
+
+  if (template === "interchangeable") return {
+    ...base,
+    name: "Interchangeable signals",
+    template,
+    conditions: [group("exactly", 2, "0")],
+    action: "safe",
+  };
+  if (template === "redundant") return {
+    ...base,
+    name: "All signals must agree",
+    template,
+    conditions: [group("all", 1, "1")],
+    action: "safe",
+  };
+  if (template === "either") return {
+    ...base,
+    name: "Any signal is enough",
+    template,
+    conditions: [group("any", 1, "1")],
+    action: "safe",
+  };
+  if (template === "voting") return {
+    ...base,
+    name: "Voting / majority",
+    template,
+    conditions: [group("at_least", 2, "1")],
+    action: "safe",
+  };
+  if (template === "exclusive") return {
+    ...base,
+    name: "Only one should be active",
+    template,
+    conditions: [group("exactly", 1, "1")],
+    action: "safe",
+  };
+  if (template === "mode_ignore") return {
+    ...base,
+    name: "Ignore during a mode",
+    template,
+    condition_join: "all",
+    conditions: [
+      { ...newLogicCondition(0), expected_value: "1" },
+      { ...newLogicCondition(1), expected_value: "0" },
+    ],
+    action: "ignore",
+    target_mode: "selected",
+  };
+  return { ...base, template: "custom" };
+}
+
+function logicConditionSentence(condition) {
+  if (condition.type === "field") {
+    const field = condition.field_key || "[choose a signal]";
+    return `${field} ${condition.operator === "not_equals" ? "is not" : "is"} ${condition.expected_value || "[value]"}`;
+  }
+
+  const count = condition.field_keys?.length || 0;
+  const selected = count ? `${count} selected signal${count === 1 ? "" : "s"}` : "the selected signals";
+  if (condition.comparator === "all") return `all of ${selected} are ${condition.expected_value || "[value]"}`;
+  if (condition.comparator === "any") return `any of ${selected} are ${condition.expected_value || "[value]"}`;
+  const compareLabel = condition.comparator === "at_least"
+    ? "at least"
+    : condition.comparator === "at_most" ? "at most" : "exactly";
+  return `${compareLabel} ${condition.count} of ${selected} are ${condition.expected_value || "[value]"}`;
+}
+
+function logicRuleSentence(rule) {
+  const conditionText = rule.conditions.map(logicConditionSentence).join(rule.condition_join === "any" ? " OR " : " AND ");
+  const actionText = {
+    safe: "treat the affected signals as Good",
+    warning: "treat the affected signals as Warning",
+    danger: "treat the affected signals as Critical",
+    neutral: "treat the affected signals as Information",
+    ignore: "ignore the affected signals",
+  }[rule.action] || "apply the selected result";
+  return `When ${conditionText || "the scenario matches"}, ${actionText}. Otherwise, normal Data Mapping applies.`;
+}
+
+function compareLogicValue(actualValue, expectedValue, operator = "equals") {
+  if (actualValue === undefined) return false;
+  const matches = canonicalIncomingValue(actualValue) === canonicalIncomingValue(expectedValue);
+  return operator === "not_equals" ? !matches : matches;
+}
+
+function evaluateLogicCondition(condition, payload) {
+  if (condition.type === "field") {
+    if (!condition.field_key) return { matched: false, fields: [] };
+    return {
+      matched: compareLogicValue(
+        payloadValueAtPath(payload, condition.field_key),
+        condition.expected_value,
+        condition.operator,
+      ),
+      fields: [condition.field_key],
+    };
+  }
+
+  const fieldKeys = condition.field_keys || [];
+  if (!fieldKeys.length) return { matched: false, fields: [] };
+  const values = fieldKeys.map((key) => payloadValueAtPath(payload, key));
+  if (values.some((value) => value === undefined)) return { matched: false, fields: fieldKeys };
+
+  const matches = values.map((value) => compareLogicValue(value, condition.expected_value, "equals"));
+  const matchCount = matches.filter(Boolean).length;
+  let matched = false;
+  if (condition.comparator === "all") matched = matches.every(Boolean);
+  else if (condition.comparator === "any") matched = matches.some(Boolean);
+  else if (condition.comparator === "at_least") matched = matchCount >= Number(condition.count || 0);
+  else if (condition.comparator === "at_most") matched = matchCount <= Number(condition.count || 0);
+  else matched = matchCount === Number(condition.count || 0);
+
+  return { matched, fields: fieldKeys };
+}
+
+function evaluateLogicRules(logicRules, payload) {
+  const overrides = new Map();
+
+  cloneLogicRules(logicRules).forEach((rule) => {
+    if (!rule.enabled || !rule.conditions.length) return;
+
+    const evaluations = rule.conditions.map((condition) => evaluateLogicCondition(condition, payload));
+    const matched = rule.condition_join === "any"
+      ? evaluations.some((evaluation) => evaluation.matched)
+      : evaluations.every((evaluation) => evaluation.matched);
+
+    if (!matched) return;
+
+    const conditionFields = [...new Set(evaluations.flatMap((evaluation) => evaluation.fields).filter(Boolean))];
+    const targetFields = rule.target_mode === "selected"
+      ? rule.target_field_keys
+      : conditionFields;
+
+    targetFields.forEach((key) => {
+      overrides.set(key, {
+        action: rule.action,
+        ruleName: rule.name || "Logic rule",
+      });
+    });
+  });
+
+  return overrides;
+}
+
 function polygonToSvgPoints(points) {
   return (Array.isArray(points) ? points : [])
     .map((point) => Array.isArray(point) ? `${point[0]},${point[1]}` : `${point.x},${point.y}`)
@@ -97,15 +437,17 @@ function polygonToSvgPoints(points) {
 }
 
 function machinePointFromDatabase(point) {
+  const sourceFields = normalizePointSourceFields(point);
   return {
     id: Number(point.point_id),
     name: point.name,
     area: point.area || "Machine",
     guardOpen: false,
     interlockOk: true,
-    guardTag: point.source_key_primary,
-    interlockTag: point.source_key_secondary || "",
-    statusMode: point.status_mode || "door_interlock",
+    guardTag: sourceFields[0]?.source_key || "",
+    interlockTag: sourceFields[1]?.source_key || "",
+    sourceFields,
+    statusMode: point.status_mode || "mapped_values",
     safeConfig: point.safe_config || { primary: "CLOSE", secondary: "LOCK" },
     valueRules: cloneValueRules(point.value_rules),
   };
@@ -363,12 +705,7 @@ function editorDraftFromMachine(machine) {
     image_mime_type: machine.image?.mime_type || "image/png",
     image_width: machine.image?.original_width || null,
     image_height: machine.image?.original_height || null,
-    modelPreviewUrl: machine.model?.url || machine.model_url || "",
-    model_base64: "",
-    model_mime_type: machine.model?.mime_type || "model/gltf-binary",
-    model_file_name: machine.model?.file_name || "",
-    model_size_bytes: machine.model?.size_bytes || null,
-    remove_model: false,
+    logic_rules: cloneLogicRules(machine.logic_rules),
     segments: (machine.segments || []).map((segment) => ({
       ...segment,
       polygon_points: Array.isArray(segment.polygon_points) ? segment.polygon_points : [],
@@ -376,6 +713,7 @@ function editorDraftFromMachine(machine) {
     })),
     points: (machine.points || []).map((point) => ({
       ...point,
+      source_fields: normalizePointSourceFields(point),
       value_rules: cloneValueRules(point.value_rules),
     })),
   };
@@ -453,71 +791,51 @@ function interpretIncomingValue(rawValue, channelRules, fallback) {
   };
 }
 
-function pointInterpretation(point, payload) {
-  if (!point.valueRules) return null;
-  const rules = cloneValueRules(point.valueRules);
-  const states = [
-    interpretIncomingValue(payloadValueAtPath(payload, point.guardTag), rules.primary, rules.fallback),
-  ];
-  if (point.interlockTag) {
-    states.push(interpretIncomingValue(payloadValueAtPath(payload, point.interlockTag), rules.secondary, rules.fallback));
-  }
+function pointInterpretation(point, payload, logicOverrides = new Map()) {
+  const fields = Array.isArray(point.sourceFields) ? point.sourceFields : [];
+  if (!fields.length) return null;
+  const states = fields.map((field) => {
+    const interpreted = interpretIncomingValue(
+      payloadValueAtPath(payload, field.source_key),
+      field.value_rules,
+      field.fallback,
+    );
+    const override = logicOverrides.get(field.source_key);
+    if (!override) return { ...interpreted, sourceKey: field.source_key, fieldLabel: field.label };
+    if (override.action === "ignore") {
+      return {
+        ...interpreted,
+        sourceKey: field.source_key,
+        fieldLabel: field.label,
+        label: interpreted.rawLabel === "No Data" ? "No Data" : `${interpreted.label} · Ignored`,
+        className: "neutral",
+        color: "#64748b",
+        logicRule: override.ruleName,
+      };
+    }
+
+    const overrideStyles = {
+      safe: { className: "safe", color: "#22c55e", suffix: "Good" },
+      warning: { className: "warning", color: "#f59e0b", suffix: "Warning" },
+      danger: { className: "danger", color: "#ef4444", suffix: "Critical" },
+      neutral: { className: "neutral", color: "#64748b", suffix: "Information" },
+    };
+    const overrideStyle = overrideStyles[override.action] || overrideStyles.safe;
+    return {
+      ...interpreted,
+      sourceKey: field.source_key,
+      fieldLabel: field.label,
+      label: interpreted.rawLabel === "No Data" ? "No Data" : `${interpreted.label} · ${overrideStyle.suffix}`,
+      className: overrideStyle.className,
+      color: overrideStyle.color,
+      logicRule: override.ruleName,
+    };
+  });
   const priority = { danger: 3, warning: 2, neutral: 1, safe: 0 };
   const overall = states.slice().sort((first, second) => (
     (priority[second.className] ?? 1) - (priority[first.className] ?? 1)
   ))[0];
   return { states, overall };
-}
-
-function useHorizontalDragScroll() {
-  const ref = useRef(null);
-  const gesture = useRef({ active: false, startX: 0, startScrollLeft: 0, dragged: false });
-
-  function finishDrag(event) {
-    const node = ref.current;
-    if (!gesture.current.active) return;
-    gesture.current.active = false;
-    node?.classList.remove("is-dragging");
-    if (node?.hasPointerCapture?.(event.pointerId)) node.releasePointerCapture(event.pointerId);
-    window.setTimeout(() => { gesture.current.dragged = false; }, 0);
-  }
-
-  return {
-    ref,
-    className: "drag-scroll",
-    onPointerDown: (event) => {
-      if (event.pointerType === "touch" || event.button !== 0) return;
-      const node = ref.current;
-      if (!node || node.scrollWidth <= node.clientWidth) return;
-      gesture.current = {
-        active: true,
-        startX: event.clientX,
-        startScrollLeft: node.scrollLeft,
-        dragged: false,
-      };
-    },
-    onPointerMove: (event) => {
-      if (!gesture.current.active) return;
-      const node = ref.current;
-      const deltaX = event.clientX - gesture.current.startX;
-      if (!gesture.current.dragged && Math.abs(deltaX) < 5) return;
-      if (!gesture.current.dragged) {
-        gesture.current.dragged = true;
-        node?.setPointerCapture?.(event.pointerId);
-      }
-      node?.classList.add("is-dragging");
-      if (node) node.scrollLeft = gesture.current.startScrollLeft - deltaX;
-      event.preventDefault();
-    },
-    onPointerUp: finishDrag,
-    onPointerCancel: finishDrag,
-    onClickCapture: (event) => {
-      if (!gesture.current.dragged) return;
-      event.preventDefault();
-      event.stopPropagation();
-      gesture.current.dragged = false;
-    },
-  };
 }
 
 function MachineConfigurationPage({
@@ -544,7 +862,6 @@ function MachineConfigurationPage({
   const [gallerySwipeOffset, setGallerySwipeOffset] = useState(0);
   const [gallerySwipeActive, setGallerySwipeActive] = useState(false);
   const gallerySwipeGesture = useRef({ active: false, startX: 0, dragged: false, ignoreClick: false, offset: 0 });
-  const mappingDrag = useHorizontalDragScroll();
   const galleryItems = useMemo(() => [
     ...machines.map((machine) => ({ ...machine, isAddMore: false })),
     { id: "__add_more__", name: "Add more", isAddMore: true },
@@ -592,7 +909,8 @@ function MachineConfigurationPage({
       })
       .catch(() => {
         if (!alive) return;
-        const configured = (draft.points || []).flatMap((point) => [point.source_key_primary, point.source_key_secondary])
+        const configured = (draft.points || [])
+          .flatMap((point) => normalizePointSourceFields(point).map((field) => field.source_key))
           .filter(Boolean)
           .map((key) => ({ key, type: "configured", sample: null, configured: true }));
         setAvailableFields(configured);
@@ -781,6 +1099,243 @@ function MachineConfigurationPage({
     }));
   }
 
+
+  function updatePointSourceField(pointIndex, fieldIndex, key, value) {
+    setDraft((current) => ({
+      ...current,
+      points: current.points.map((point, index) => {
+        if (index !== pointIndex) return point;
+        const fields = normalizePointSourceFields(point);
+        return {
+          ...point,
+          source_fields: fields.map((field, indexInFields) => indexInFields === fieldIndex
+            ? { ...field, [key]: value }
+            : field),
+        };
+      }),
+    }));
+  }
+
+  function addPointSourceField(pointIndex) {
+    setDraft((current) => ({
+      ...current,
+      points: current.points.map((point, index) => {
+        if (index !== pointIndex) return point;
+        const fields = normalizePointSourceFields(point);
+        const nextNumber = fields.length + 1;
+        return {
+          ...point,
+          source_fields: [
+            ...fields,
+            {
+              id: `field-${Date.now()}-${nextNumber}`,
+              label: `Field ${nextNumber}`,
+              source_key: "",
+              value_rules: cloneFieldValueRules(DEFAULT_POINT_VALUE_RULES.primary),
+              fallback: { ...DEFAULT_POINT_VALUE_RULES.fallback },
+            },
+          ],
+        };
+      }),
+    }));
+  }
+
+  function removePointSourceField(pointIndex, fieldIndex) {
+    setDraft((current) => ({
+      ...current,
+      points: current.points.map((point, index) => {
+        if (index !== pointIndex) return point;
+        const fields = normalizePointSourceFields(point);
+        if (fields.length <= 1) return point;
+        return { ...point, source_fields: fields.filter((_, indexInFields) => indexInFields !== fieldIndex) };
+      }),
+    }));
+  }
+
+  function updateFieldValueRule(pointIndex, fieldIndex, ruleIndex, key, value) {
+    setDraft((current) => ({
+      ...current,
+      points: current.points.map((point, index) => {
+        if (index !== pointIndex) return point;
+        const fields = normalizePointSourceFields(point);
+        return {
+          ...point,
+          source_fields: fields.map((field, indexInFields) => {
+            if (indexInFields !== fieldIndex) return field;
+            return {
+              ...field,
+              value_rules: field.value_rules.map((rule, indexInRules) => indexInRules === ruleIndex
+                ? { ...rule, [key]: value }
+                : rule),
+            };
+          }),
+        };
+      }),
+    }));
+  }
+
+  function addFieldValueRule(pointIndex, fieldIndex) {
+    setDraft((current) => ({
+      ...current,
+      points: current.points.map((point, index) => {
+        if (index !== pointIndex) return point;
+        const fields = normalizePointSourceFields(point);
+        return {
+          ...point,
+          source_fields: fields.map((field, indexInFields) => indexInFields === fieldIndex
+            ? { ...field, value_rules: [...field.value_rules, { value: "", label: "", severity: "safe", color: "#22c55e" }] }
+            : field),
+        };
+      }),
+    }));
+  }
+
+  function removeFieldValueRule(pointIndex, fieldIndex, ruleIndex) {
+    setDraft((current) => ({
+      ...current,
+      points: current.points.map((point, index) => {
+        if (index !== pointIndex) return point;
+        const fields = normalizePointSourceFields(point);
+        return {
+          ...point,
+          source_fields: fields.map((field, indexInFields) => indexInFields === fieldIndex
+            ? { ...field, value_rules: field.value_rules.filter((_, indexInRules) => indexInRules !== ruleIndex) }
+            : field),
+        };
+      }),
+    }));
+  }
+
+  function updateFieldFallback(pointIndex, fieldIndex, key, value) {
+    setDraft((current) => ({
+      ...current,
+      points: current.points.map((point, index) => {
+        if (index !== pointIndex) return point;
+        const fields = normalizePointSourceFields(point);
+        return {
+          ...point,
+          source_fields: fields.map((field, indexInFields) => indexInFields === fieldIndex
+            ? { ...field, fallback: { ...field.fallback, [key]: value } }
+            : field),
+        };
+      }),
+    }));
+  }
+
+  function addLogicRule() {
+    addLogicScenario("custom");
+  }
+
+  function addLogicScenario(template) {
+    setDraft((current) => ({
+      ...current,
+      logic_rules: [
+        ...cloneLogicRules(current.logic_rules),
+        logicScenarioRule(template, current.logic_rules?.length || 0),
+      ],
+    }));
+  }
+
+  function updateLogicRule(ruleIndex, key, value) {
+    setDraft((current) => ({
+      ...current,
+      logic_rules: cloneLogicRules(current.logic_rules).map((rule, index) => index === ruleIndex
+        ? { ...rule, [key]: value }
+        : rule),
+    }));
+  }
+
+  function addLogicCondition(ruleIndex) {
+    setDraft((current) => ({
+      ...current,
+      logic_rules: cloneLogicRules(current.logic_rules).map((rule, index) => index === ruleIndex
+        ? { ...rule, conditions: [...rule.conditions, newLogicCondition(rule.conditions.length)] }
+        : rule),
+    }));
+  }
+
+  function updateLogicCondition(ruleIndex, conditionIndex, key, value) {
+    setDraft((current) => ({
+      ...current,
+      logic_rules: cloneLogicRules(current.logic_rules).map((rule, index) => {
+        if (index !== ruleIndex) return rule;
+        return {
+          ...rule,
+          conditions: rule.conditions.map((condition, indexInConditions) => indexInConditions === conditionIndex
+            ? {
+              ...condition,
+              [key]: key === "count" ? Math.max(0, Number(value || 0)) : value,
+              ...(key === "type" && value === "field"
+                ? { field_keys: [] }
+                : key === "type" && value === "group"
+                  ? { field_key: "" }
+                  : {}),
+            }
+            : condition),
+        };
+      }),
+    }));
+  }
+
+  function removeLogicCondition(ruleIndex, conditionIndex) {
+    setDraft((current) => ({
+      ...current,
+      logic_rules: cloneLogicRules(current.logic_rules).map((rule, index) => {
+        if (index !== ruleIndex) return rule;
+        const nextConditions = rule.conditions.filter((_, indexInConditions) => indexInConditions !== conditionIndex);
+        return {
+          ...rule,
+          conditions: nextConditions.length ? nextConditions : [newLogicCondition(0)],
+        };
+      }),
+    }));
+  }
+
+  function toggleLogicConditionField(ruleIndex, conditionIndex, fieldKey) {
+    setDraft((current) => ({
+      ...current,
+      logic_rules: cloneLogicRules(current.logic_rules).map((rule, index) => {
+        if (index !== ruleIndex) return rule;
+        return {
+          ...rule,
+          conditions: rule.conditions.map((condition, indexInConditions) => {
+            if (indexInConditions !== conditionIndex) return condition;
+            const hasField = condition.field_keys.includes(fieldKey);
+            return {
+              ...condition,
+              field_keys: hasField
+                ? condition.field_keys.filter((key) => key !== fieldKey)
+                : [...condition.field_keys, fieldKey],
+            };
+          }),
+        };
+      }),
+    }));
+  }
+
+  function toggleLogicTargetField(ruleIndex, fieldKey) {
+    setDraft((current) => ({
+      ...current,
+      logic_rules: cloneLogicRules(current.logic_rules).map((rule, index) => {
+        if (index !== ruleIndex) return rule;
+        const hasField = rule.target_field_keys.includes(fieldKey);
+        return {
+          ...rule,
+          target_field_keys: hasField
+            ? rule.target_field_keys.filter((key) => key !== fieldKey)
+            : [...rule.target_field_keys, fieldKey],
+        };
+      }),
+    }));
+  }
+
+  function removeLogicRule(ruleIndex) {
+    setDraft((current) => ({
+      ...current,
+      logic_rules: cloneLogicRules(current.logic_rules).filter((_, index) => index !== ruleIndex),
+    }));
+  }
+
   function addPointMapping(sourceKey = "") {
     const nextId = Math.max(0, ...draft.points.map((point) => Number(point.point_id) || 0)) + 1;
     setDraft((current) => ({
@@ -790,9 +1345,16 @@ function MachineConfigurationPage({
         name: sourceKey ? availableFieldLabel(sourceKey) : `Point ${nextId}`,
         area: "Machine",
         segment_id: current.segments[0]?.id || null,
+        source_fields: [{
+          id: `field-${Date.now()}-1`,
+          label: "Field 1",
+          source_key: sourceKey,
+          value_rules: cloneFieldValueRules(DEFAULT_POINT_VALUE_RULES.primary),
+          fallback: { ...DEFAULT_POINT_VALUE_RULES.fallback },
+        }],
         source_key_primary: sourceKey,
-        source_key_secondary: "",
-        status_mode: "door_interlock",
+        source_key_secondary: null,
+        status_mode: "mapped_values",
         safe_config: { primary: "CLOSE", secondary: "LOCK" },
         value_rules: cloneValueRules(DEFAULT_POINT_VALUE_RULES),
         is_active: true,
@@ -800,58 +1362,6 @@ function MachineConfigurationPage({
     }));
   }
 
-  function updateValueRule(pointIndex, channel, ruleIndex, field, value) {
-    setDraft((current) => ({
-      ...current,
-      points: current.points.map((point, index) => {
-        if (index !== pointIndex) return point;
-        const rules = cloneValueRules(point.value_rules);
-        rules[channel] = rules[channel].map((rule, indexInChannel) => indexInChannel === ruleIndex
-          ? { ...rule, [field]: value }
-          : rule);
-        return { ...point, value_rules: rules };
-      }),
-    }));
-  }
-
-  function addValueRule(pointIndex, channel) {
-    setDraft((current) => ({
-      ...current,
-      points: current.points.map((point, index) => {
-        if (index !== pointIndex) return point;
-        const rules = cloneValueRules(point.value_rules);
-        rules[channel] = [
-          ...rules[channel],
-          { value: "", label: "", severity: "safe", color: "#22c55e" },
-        ];
-        return { ...point, value_rules: rules };
-      }),
-    }));
-  }
-
-  function removeValueRule(pointIndex, channel, ruleIndex) {
-    setDraft((current) => ({
-      ...current,
-      points: current.points.map((point, index) => {
-        if (index !== pointIndex) return point;
-        const rules = cloneValueRules(point.value_rules);
-        rules[channel] = rules[channel].filter((_, indexInChannel) => indexInChannel !== ruleIndex);
-        return { ...point, value_rules: rules };
-      }),
-    }));
-  }
-
-  function updateFallbackRule(pointIndex, field, value) {
-    setDraft((current) => ({
-      ...current,
-      points: current.points.map((point, index) => {
-        if (index !== pointIndex) return point;
-        const rules = cloneValueRules(point.value_rules);
-        rules.fallback = { ...rules.fallback, [field]: value };
-        return { ...point, value_rules: rules };
-      }),
-    }));
-  }
 
   function removePointMapping(index) {
     setDraft((current) => ({
@@ -892,53 +1402,6 @@ function MachineConfigurationPage({
   }
 
 
-  function handleModelFile(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setError("");
-    const isGlb = /\.glb$/i.test(file.name) || file.type === "model/gltf-binary";
-    const isGltf = /\.gltf$/i.test(file.name) || file.type === "model/gltf+json";
-    if (!isGlb && !isGltf) {
-      setError("Use a GLB or GLTF 3D model.");
-      event.target.value = "";
-      return;
-    }
-    if (file.size > 80 * 1024 * 1024) {
-      setError("The 3D model must be 80 MB or smaller.");
-      event.target.value = "";
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onerror = () => setError("The selected 3D model could not be read.");
-    reader.onload = () => {
-      const value = String(reader.result || "");
-      setDraft((current) => ({
-        ...current,
-        modelPreviewUrl: value,
-        model_base64: value,
-        model_mime_type: file.type || (isGlb ? "model/gltf-binary" : "model/gltf+json"),
-        model_file_name: file.name,
-        model_size_bytes: file.size,
-        remove_model: false,
-      }));
-      setMessage(`${file.name} is ready to save.`);
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function removeModelFromDraft() {
-    setDraft((current) => ({
-      ...current,
-      modelPreviewUrl: "",
-      model_base64: "",
-      model_file_name: "",
-      model_size_bytes: null,
-      remove_model: true,
-    }));
-    setMessage("The 3D model will be removed when you save the configuration.");
-  }
-
   async function saveConfiguration() {
     setSaving(true);
     setError("");
@@ -957,6 +1420,8 @@ function MachineConfigurationPage({
         }));
       }
 
+      points = points.map(syncPointFieldsForSave);
+
       const response = await fetch(`/api/machines/${encodeURIComponent(draft.id)}/configuration`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -967,15 +1432,11 @@ function MachineConfigurationPage({
           is_active: draft.is_active,
           config_revision: draft.config_revision,
           data_source: draft.data_source,
+          logic_rules: cloneLogicRules(draft.logic_rules),
           image_base64: draft.image_base64 || undefined,
           image_mime_type: draft.image_mime_type,
           image_width: draft.image_width,
           image_height: draft.image_height,
-          model_base64: draft.model_base64 || undefined,
-          model_mime_type: draft.model_mime_type,
-          model_file_name: draft.model_file_name,
-          model_size_bytes: draft.model_size_bytes,
-          remove_model: draft.remove_model,
           segments,
           points,
         }),
@@ -1175,20 +1636,6 @@ function MachineConfigurationPage({
 
           <section className="configurator-section image-segment-section">
             <div className="configurator-section-heading"><span>Step 2</span><div><strong>Machine image and segments</strong><small>Click the image to draw the selected segment</small></div></div>
-            <div className="machine-model-upload-row">
-              <div>
-                <strong>3D model</strong>
-                <small>{draft.model_file_name || (draft.modelPreviewUrl ? "3D model available" : "No Data")}</small>
-              </div>
-              <div className="machine-model-upload-actions">
-                {draft.modelPreviewUrl && <button type="button" onClick={removeModelFromDraft}>Remove 3D</button>}
-                <label className="machine-model-upload">
-                  {draft.modelPreviewUrl ? "Replace 3D" : "Add 3D"}
-                  <input type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" onChange={handleModelFile} />
-                </label>
-              </div>
-            </div>
-
             <div className="segment-workbench">
               <div className="segment-canvas-column">
                 <div className="segment-editor-canvas floating-media" style={{ aspectRatio: FIXED_MACHINE_CANVAS_ASPECT }} onClick={addPolygonPoint}>
@@ -1249,28 +1696,338 @@ function MachineConfigurationPage({
           </section>
 
           <section className="configurator-section point-mapping-section">
-            <div className="configurator-section-heading"><span>Step 3</span><div><strong>Data mapping and meaning</strong><small>Choose MQTT fields, then define exactly what every received value means</small></div><div className="point-add-controls"><select defaultValue="" onChange={(event) => { if (event.target.value) addPointMapping(event.target.value); event.target.value = ""; }}><option value="">+ Detected data</option>{detectedFieldKeys.map((key) => <option key={key} value={key}>{key}</option>)}</select><button onClick={() => addPointMapping()}>+ Blank</button></div></div>
+            <div className="configurator-section-heading">
+              <span>Step 3</span>
+              <div><strong>Data Mapping</strong></div>
+              <div className="point-add-controls">
+                <select defaultValue="" onChange={(event) => { if (event.target.value) addPointMapping(event.target.value); event.target.value = ""; }}>
+                  <option value="">+ Detected data</option>
+                  {detectedFieldKeys.map((key) => <option key={key} value={key}>{key}</option>)}
+                </select>
+                <button onClick={() => addPointMapping()}>+ Blank</button>
+              </div>
+            </div>
             <datalist id={`available-data-${draft.id}`}>{detectedFieldKeys.map((key) => <option key={key} value={key} />)}</datalist>
-            <div
-              {...mappingDrag}
-              className={`point-mapping-table ${mappingDrag.className}`}
-              aria-label="Machine data mappings. Drag horizontally to browse columns."
-            >
-              <div className="point-mapping-head"><span>No.</span><span>Point name</span><span>Primary MQTT field</span><span>Secondary field</span><span>Segment</span><span>Value meaning</span><span /></div>
-              {draft.points.map((point, index) => (
-                <div className="point-mapping-entry" key={`${point.point_id}-${index}`}>
-                  <div className="point-mapping-row">
-                    <input type="number" value={point.point_id} onChange={(event) => updatePoint(index, "point_id", event.target.value)} />
-                    <input value={point.name || ""} onChange={(event) => updatePoint(index, "name", event.target.value)} />
-                    <input list={`available-data-${draft.id}`} value={point.source_key_primary || ""} onChange={(event) => updatePoint(index, "source_key_primary", event.target.value)} />
-                    <input list={`available-data-${draft.id}`} value={point.source_key_secondary || ""} onChange={(event) => updatePoint(index, "source_key_secondary", event.target.value)} placeholder="Optional" />
-                    <select value={point.segment_id || ""} onChange={(event) => updatePoint(index, "segment_id", event.target.value || null)}><option value="">Unassigned</option>{draft.segments.map((segment) => <option key={segment.id} value={segment.id}>{segment.name}</option>)}</select>
-                    <button className="point-meaning-button" onClick={() => setRulesPointId(point.point_id)}>Define 1 / 0</button>
-                    <button className="point-remove-button" onClick={() => removePointMapping(index)} aria-label={`Remove ${point.name}`}>×</button>
+            <div className="point-mapping-table flexible-fields" aria-label="Machine data mappings">
+              <div className="point-mapping-head"><span>No.</span><span>Point name</span><span>Fields</span><span>Segment</span><span>Value meaning</span><span /></div>
+              {draft.points.map((point, index) => {
+                const fields = normalizePointSourceFields(point);
+                return (
+                  <div className="point-mapping-entry" key={`${point.point_id}-${index}`}>
+                    <div className="point-mapping-row">
+                      <input type="number" value={point.point_id} onChange={(event) => updatePoint(index, "point_id", event.target.value)} />
+                      <input value={point.name || ""} onChange={(event) => updatePoint(index, "name", event.target.value)} />
+                      <div className="point-fields-cell">
+                        {fields.map((field, fieldIndex) => (
+                          <div className="point-field-row" key={field.id || fieldIndex}>
+                            <span>{fieldIndex + 1}</span>
+                            <input
+                              list={`available-data-${draft.id}`}
+                              value={field.source_key || ""}
+                              onChange={(event) => updatePointSourceField(index, fieldIndex, "source_key", event.target.value)}
+                              placeholder="MQTT field"
+                            />
+                            <div className="point-field-actions">
+                              {fieldIndex === fields.length - 1 && (
+                                <button
+                                  type="button"
+                                  className="point-add-field-button"
+                                  onClick={() => addPointSourceField(index)}
+                                  aria-label="Add another field"
+                                  title="Add field"
+                                >+</button>
+                              )}
+                              {fields.length > 1 && (
+                                <button
+                                  type="button"
+                                  className="point-remove-field-button"
+                                  onClick={() => removePointSourceField(index, fieldIndex)}
+                                  aria-label={`Remove field ${fieldIndex + 1}`}
+                                  title="Remove field"
+                                >×</button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <select value={point.segment_id || ""} onChange={(event) => updatePoint(index, "segment_id", event.target.value || null)}>
+                        <option value="">Unassigned</option>
+                        {draft.segments.map((segment) => <option key={segment.id} value={segment.id}>{segment.name}</option>)}
+                      </select>
+                      <button className="point-meaning-button" onClick={() => setRulesPointId(point.point_id)}>Define values</button>
+                      <button className="point-remove-button" onClick={() => removePointMapping(index)} aria-label={`Remove ${point.name}`}>×</button>
+                    </div>
                   </div>
+                );
+              })}
+              {!draft.points.length && <div className="point-mapping-empty">No Data</div>}
+            </div>
+          </section>
+
+          <section className="configurator-section logic-rules-section">
+            <div className="configurator-section-heading logic-rules-heading">
+              <span>Step 4</span>
+              <div>
+                <strong>Logic Rules</strong>
+                <small>Only use this when normal Data Mapping is not enough.</small>
+              </div>
+              <button type="button" className="logic-add-rule-button" onClick={addLogicRule}>+ Custom rule</button>
+            </div>
+
+            <div className="logic-scenario-library">
+              <div className="logic-scenario-library-heading">
+                <div>
+                  <strong>Start from a common scenario</strong>
+                  <span>Pick the situation that sounds closest. You can change the signals and values afterward.</span>
                 </div>
-              ))}
-              {!draft.points.length && <div className="point-mapping-empty">No mappings yet. Add the HighByte fields that this machine should monitor.</div>}
+              </div>
+              <div className="logic-scenario-grid">
+                {LOGIC_SCENARIOS.map((scenario) => (
+                  <button
+                    type="button"
+                    className="logic-scenario-card"
+                    key={scenario.id}
+                    onClick={() => addLogicScenario(scenario.id)}
+                  >
+                    <span className="logic-scenario-badge">{scenario.badge}</span>
+                    <strong>{scenario.title}</strong>
+                    <small>{scenario.description}</small>
+                    <em>{scenario.example}</em>
+                    <b aria-hidden="true">Add scenario →</b>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="logic-rule-list">
+              {cloneLogicRules(draft.logic_rules).map((rule, ruleIndex) => {
+                const availableKeys = [...new Set(
+                  draft.points
+                    .flatMap((point) => normalizePointSourceFields(point).map((field) => field.source_key))
+                    .filter(Boolean),
+                )];
+                const scenarioInfo = LOGIC_SCENARIOS.find((scenario) => scenario.id === rule.template);
+
+                return (
+                  <article className="logic-rule-card" key={rule.id}>
+                    <div className="logic-rule-topline">
+                      <label className="logic-rule-name">
+                        <span>Scenario name</span>
+                        <input value={rule.name} onChange={(event) => updateLogicRule(ruleIndex, "name", event.target.value)} />
+                      </label>
+                      <label className="logic-rule-enabled">
+                        <input type="checkbox" checked={rule.enabled} onChange={(event) => updateLogicRule(ruleIndex, "enabled", event.target.checked)} />
+                        <span>Enabled</span>
+                      </label>
+                      <button type="button" className="logic-rule-delete" onClick={() => removeLogicRule(ruleIndex)}>Delete</button>
+                    </div>
+
+                    <div className="logic-plain-summary">
+                      <span>In plain English</span>
+                      <strong>{logicRuleSentence(rule)}</strong>
+                      {scenarioInfo && <small>{scenarioInfo.example}</small>}
+                    </div>
+
+                    <div className="logic-builder">
+                      <section className="logic-builder-block logic-when-block">
+                        <header>
+                          <div>
+                            <span>1 · SITUATION</span>
+                            <strong>Describe when this special rule should happen</strong>
+                          </div>
+                          {rule.conditions.length > 1 && (
+                            <label className="logic-condition-join">
+                              <span>Between requirements</span>
+                              <select value={rule.condition_join} onChange={(event) => updateLogicRule(ruleIndex, "condition_join", event.target.value)}>
+                                <option value="all">ALL must be true</option>
+                                <option value="any">ANY can be true</option>
+                              </select>
+                            </label>
+                          )}
+                        </header>
+
+                        <div className="logic-condition-list">
+                          {rule.conditions.map((condition, conditionIndex) => (
+                            <div className="logic-condition-card" key={condition.id || conditionIndex}>
+                              <div className="logic-condition-number">{conditionIndex + 1}</div>
+
+                              <div className="logic-condition-body">
+                                <div className="logic-condition-type-row">
+                                  <label>
+                                    <span>This requirement checks</span>
+                                    <select
+                                      value={condition.type}
+                                      onChange={(event) => updateLogicCondition(ruleIndex, conditionIndex, "type", event.target.value)}
+                                    >
+                                      <option value="field">One signal</option>
+                                      <option value="group">Several signals together</option>
+                                    </select>
+                                  </label>
+
+                                  {rule.conditions.length > 1 && (
+                                    <button
+                                      type="button"
+                                      className="logic-condition-remove"
+                                      onClick={() => removeLogicCondition(ruleIndex, conditionIndex)}
+                                      aria-label={`Remove requirement ${conditionIndex + 1}`}
+                                    >×</button>
+                                  )}
+                                </div>
+
+                                {condition.type === "field" ? (
+                                  <div className="logic-human-line logic-field-condition">
+                                    <span>When</span>
+                                    <select
+                                      value={condition.field_key}
+                                      onChange={(event) => updateLogicCondition(ruleIndex, conditionIndex, "field_key", event.target.value)}
+                                      aria-label="Signal"
+                                    >
+                                      <option value="">Choose signal</option>
+                                      {availableKeys.map((fieldKey) => <option key={fieldKey} value={fieldKey}>{fieldKey}</option>)}
+                                    </select>
+                                    <select
+                                      value={condition.operator}
+                                      onChange={(event) => updateLogicCondition(ruleIndex, conditionIndex, "operator", event.target.value)}
+                                      aria-label="Comparison"
+                                    >
+                                      <option value="equals">is</option>
+                                      <option value="not_equals">is not</option>
+                                    </select>
+                                    <input
+                                      value={condition.expected_value}
+                                      onChange={(event) => updateLogicCondition(ruleIndex, conditionIndex, "expected_value", event.target.value)}
+                                      placeholder="Value"
+                                      aria-label="Expected value"
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="logic-group-condition">
+                                    <div className="logic-human-line logic-group-sentence">
+                                      <span>When</span>
+                                      <select
+                                        value={condition.comparator}
+                                        onChange={(event) => updateLogicCondition(ruleIndex, conditionIndex, "comparator", event.target.value)}
+                                        aria-label="Group comparison"
+                                      >
+                                        <option value="exactly">Exactly</option>
+                                        <option value="at_least">At least</option>
+                                        <option value="at_most">At most</option>
+                                        <option value="all">All</option>
+                                        <option value="any">Any</option>
+                                      </select>
+                                      {!['all', 'any'].includes(condition.comparator) && (
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          max={Math.max(1, condition.field_keys.length)}
+                                          value={condition.count}
+                                          onChange={(event) => updateLogicCondition(ruleIndex, conditionIndex, "count", event.target.value)}
+                                          aria-label="How many signals"
+                                        />
+                                      )}
+                                      <span>of the selected signals are</span>
+                                      <input
+                                        value={condition.expected_value}
+                                        onChange={(event) => updateLogicCondition(ruleIndex, conditionIndex, "expected_value", event.target.value)}
+                                        placeholder="Value"
+                                        aria-label="Expected group value"
+                                      />
+                                    </div>
+
+                                    <details className="logic-field-selector" open>
+                                      <summary>
+                                        Select the signals for this scenario
+                                        <span>{condition.field_keys.length} selected</span>
+                                      </summary>
+                                      <div>
+                                        {availableKeys.length ? availableKeys.map((fieldKey) => (
+                                          <label key={fieldKey}>
+                                            <input
+                                              type="checkbox"
+                                              checked={condition.field_keys.includes(fieldKey)}
+                                              onChange={() => toggleLogicConditionField(ruleIndex, conditionIndex, fieldKey)}
+                                            />
+                                            <span>{fieldKey}</span>
+                                          </label>
+                                        )) : <p>No Data</p>}
+                                      </div>
+                                    </details>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <button type="button" className="logic-add-condition" onClick={() => addLogicCondition(ruleIndex)}>+ Add another requirement</button>
+                      </section>
+
+                      <section className="logic-builder-block logic-then-block">
+                        <header>
+                          <div>
+                            <span>2 · RESULT</span>
+                            <strong>Tell the dashboard what this situation means</strong>
+                          </div>
+                        </header>
+
+                        <div className="logic-outcome-grid">
+                          <label>
+                            <span>When the situation above is true</span>
+                            <select value={rule.action} onChange={(event) => updateLogicRule(ruleIndex, "action", event.target.value)}>
+                              <option value="safe">Show as Good</option>
+                              <option value="warning">Show as Warning</option>
+                              <option value="danger">Show as Critical</option>
+                              <option value="neutral">Show as Information</option>
+                              <option value="ignore">Ignore the status</option>
+                            </select>
+                          </label>
+
+                          <label>
+                            <span>Which signals should this affect?</span>
+                            <select value={rule.target_mode} onChange={(event) => updateLogicRule(ruleIndex, "target_mode", event.target.value)}>
+                              <option value="conditions">The signals used above</option>
+                              <option value="selected">Let me choose different signals</option>
+                            </select>
+                          </label>
+                        </div>
+
+                        {rule.target_mode === "selected" && (
+                          <details className="logic-field-selector logic-target-selector" open>
+                            <summary>
+                              Select the signals affected by the result
+                              <span>{rule.target_field_keys.length} selected</span>
+                            </summary>
+                            <div>
+                              {availableKeys.length ? availableKeys.map((fieldKey) => (
+                                <label key={fieldKey}>
+                                  <input
+                                    type="checkbox"
+                                    checked={rule.target_field_keys.includes(fieldKey)}
+                                    onChange={() => toggleLogicTargetField(ruleIndex, fieldKey)}
+                                  />
+                                  <span>{fieldKey}</span>
+                                </label>
+                              )) : <p>No Data</p>}
+                            </div>
+                          </details>
+                        )}
+
+                        <div className="logic-else-note">
+                          <b>If this situation is NOT true</b>
+                          <span>Nothing special happens — the normal Data Mapping result is used.</span>
+                        </div>
+                      </section>
+                    </div>
+                  </article>
+                );
+              })}
+
+              {!cloneLogicRules(draft.logic_rules).length && (
+                <div className="logic-rule-empty">
+                  <strong>No special scenarios added</strong>
+                  <span>Your normal Data Mapping will be used for everything. Pick one of the common scenarios above only when you need an exception.</span>
+                </div>
+              )}
             </div>
           </section>
         </div>
@@ -1282,10 +2039,10 @@ function MachineConfigurationPage({
             <PointValueRulesEditor
               point={activeRulesPoint}
               pointIndex={activeRulesPointIndex}
-              onUpdate={updateValueRule}
-              onAdd={addValueRule}
-              onRemove={removeValueRule}
-              onFallbackUpdate={updateFallbackRule}
+              onUpdate={updateFieldValueRule}
+              onAdd={addFieldValueRule}
+              onRemove={removeFieldValueRule}
+              onFallbackUpdate={updateFieldFallback}
               onClose={() => setRulesPointId(null)}
             />
           </div>
@@ -1296,18 +2053,14 @@ function MachineConfigurationPage({
 }
 
 function PointValueRulesEditor({ point, pointIndex, onUpdate, onAdd, onRemove, onFallbackUpdate, onClose }) {
-  const rules = cloneValueRules(point.value_rules);
-  const channels = [
-    { key: "primary", label: "Primary field", sourceKey: point.source_key_primary },
-    { key: "secondary", label: "Secondary field", sourceKey: point.source_key_secondary },
-  ].filter((channel) => channel.key === "primary" || channel.sourceKey);
+  const fields = normalizePointSourceFields(point);
 
   return (
     <section className="point-value-rules" aria-label={`Value meanings for ${point.name}`}>
       <header>
         <div>
           <strong>Incoming value meanings</strong>
-          <small>Interlocks keep their Boolean raw value. Define what 1 and 0 mean to operators.</small>
+          <small>Define what each received value means for every field attached to this point.</small>
         </div>
         <div className="value-rule-header-actions">
           <span>{point.name}</span>
@@ -1315,37 +2068,36 @@ function PointValueRulesEditor({ point, pointIndex, onUpdate, onAdd, onRemove, o
         </div>
       </header>
 
-      <div className="value-rule-channels">
-        {channels.map((channel) => (
-          <div className="value-rule-channel" key={channel.key}>
+      <div className={`value-rule-channels ${fields.length === 1 ? "single" : ""}`}>
+        {fields.map((field, fieldIndex) => (
+          <div className="value-rule-channel" key={field.id || fieldIndex}>
             <div className="value-rule-channel-heading">
-              <div><strong>{channel.label}</strong><small>{channel.sourceKey || "Choose an MQTT field above"}</small></div>
-              <button onClick={() => onAdd(pointIndex, channel.key)}>+ Value</button>
+              <div><strong>Field {fieldIndex + 1}</strong><small>{field.source_key || "No Data"}</small></div>
+              <button onClick={() => onAdd(pointIndex, fieldIndex)}>+ Value</button>
             </div>
-            <div className="value-rule-head"><span>Raw Boolean</span><span>Display label</span><span>Condition</span><span>Color</span><span /></div>
-            {rules[channel.key].map((rule, ruleIndex) => (
-              <div className="value-rule-row" key={`${channel.key}-${ruleIndex}`}>
-                <input value={rule.value ?? ""} onChange={(event) => onUpdate(pointIndex, channel.key, ruleIndex, "value", event.target.value)} placeholder="1 or 0" inputMode="numeric" />
-                <input value={rule.label || ""} onChange={(event) => onUpdate(pointIndex, channel.key, ruleIndex, "label", event.target.value)} placeholder="Locked" />
-                <select value={rule.severity || "safe"} onChange={(event) => onUpdate(pointIndex, channel.key, ruleIndex, "severity", event.target.value)}>
+            <div className="value-rule-head"><span>Raw value</span><span>Display label</span><span>Condition</span><span>Color</span><span /></div>
+            {field.value_rules.map((rule, ruleIndex) => (
+              <div className="value-rule-row" key={`${field.id}-${ruleIndex}`}>
+                <input value={rule.value ?? ""} onChange={(event) => onUpdate(pointIndex, fieldIndex, ruleIndex, "value", event.target.value)} placeholder="1 or 0" />
+                <input value={rule.label || ""} onChange={(event) => onUpdate(pointIndex, fieldIndex, ruleIndex, "label", event.target.value)} placeholder="Closed" />
+                <select value={rule.severity || "safe"} onChange={(event) => onUpdate(pointIndex, fieldIndex, ruleIndex, "severity", event.target.value)}>
                   {VALUE_SEVERITIES.map((severity) => <option key={severity.value} value={severity.value}>{severity.label}</option>)}
                 </select>
-                <input className="value-rule-color" type="color" value={rule.color || "#22c55e"} onChange={(event) => onUpdate(pointIndex, channel.key, ruleIndex, "color", event.target.value)} aria-label="Status color" />
-                <button onClick={() => onRemove(pointIndex, channel.key, ruleIndex)} aria-label="Remove value meaning">×</button>
+                <input className="value-rule-color" type="color" value={rule.color || "#22c55e"} onChange={(event) => onUpdate(pointIndex, fieldIndex, ruleIndex, "color", event.target.value)} aria-label="Status color" />
+                <button onClick={() => onRemove(pointIndex, fieldIndex, ruleIndex)} aria-label="Remove value meaning">×</button>
               </div>
             ))}
-            {!rules[channel.key].length && <div className="value-rule-empty">No meanings defined for this field.</div>}
+            {!field.value_rules.length && <div className="value-rule-empty">No Data</div>}
+            <div className="value-rule-fallback field-fallback">
+              <div><strong>Unmatched value</strong><small>Used when this field sends another value.</small></div>
+              <input value={field.fallback?.label || ""} onChange={(event) => onFallbackUpdate(pointIndex, fieldIndex, "label", event.target.value)} placeholder="Unknown" />
+              <select value={field.fallback?.severity || "warning"} onChange={(event) => onFallbackUpdate(pointIndex, fieldIndex, "severity", event.target.value)}>
+                {VALUE_SEVERITIES.map((severity) => <option key={severity.value} value={severity.value}>{severity.label}</option>)}
+              </select>
+              <input className="value-rule-color" type="color" value={field.fallback?.color || "#f59e0b"} onChange={(event) => onFallbackUpdate(pointIndex, fieldIndex, "color", event.target.value)} aria-label="Fallback color" />
+            </div>
           </div>
         ))}
-      </div>
-
-      <div className="value-rule-fallback">
-        <div><strong>Unmatched value</strong><small>Used when MQTT sends a value that is not listed above.</small></div>
-        <input value={rules.fallback.label || ""} onChange={(event) => onFallbackUpdate(pointIndex, "label", event.target.value)} placeholder="Unknown" />
-        <select value={rules.fallback.severity || "warning"} onChange={(event) => onFallbackUpdate(pointIndex, "severity", event.target.value)}>
-          {VALUE_SEVERITIES.map((severity) => <option key={severity.value} value={severity.value}>{severity.label}</option>)}
-        </select>
-        <input className="value-rule-color" type="color" value={rules.fallback.color || "#f59e0b"} onChange={(event) => onFallbackUpdate(pointIndex, "color", event.target.value)} aria-label="Fallback color" />
       </div>
     </section>
   );
@@ -1363,7 +2115,6 @@ function LegacyDashboardApp({
   const [machineData, setMachineData] = useState(null);
   const [apiError, setApiError] = useState("");
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [viewMode, setViewMode] = useState("2d");
   const [selectedPoint, setSelectedPoint] = useState(null);
   const [machinePickerOpen, setMachinePickerOpen] = useState(false);
   const [machineImageAspect, setMachineImageAspect] = useState(FIXED_MACHINE_CANVAS_ASPECT);
@@ -1389,9 +2140,7 @@ function LegacyDashboardApp({
         points: databasePoints.map(machinePointFromDatabase),
         zones: databaseZones.map(machineZoneFromDatabase),
         dataSource: machine.data_source || null,
-        modelUrl: machine.model?.url || machine.model_url || "",
-        modelZones: Array.isArray(machine.model_zones) ? machine.model_zones : [],
-        modelSettings: machine.model_settings || MACHINE_3D_MODEL_SETTINGS,
+        logicRules: cloneLogicRules(machine.logic_rules),
       };
       return result;
     }, {});
@@ -1405,9 +2154,7 @@ function LegacyDashboardApp({
     canvasAspectRatio: FIXED_MACHINE_CANVAS_ASPECT,
     points: [],
     zones: [],
-    modelUrl: "",
-    modelZones: [],
-    modelSettings: MACHINE_3D_MODEL_SETTINGS,
+    logicRules: [],
   };
 
   useEffect(() => {
@@ -1460,11 +2207,12 @@ function LegacyDashboardApp({
     return () => clearInterval(interval);
   }, [activeMachineId, activeMachine.apiUrl, activeMachine.canvasAspectRatio]);
 
-  useEffect(() => {
-    if (!activeMachine.modelUrl && viewMode === "3d") setViewMode("2d");
-  }, [activeMachine.modelUrl, viewMode]);
 
   const payload = machineData?.data || {};
+  const logicOverrides = useMemo(
+    () => evaluateLogicRules(activeMachine.logicRules, payload),
+    [activeMachine.logicRules, payload],
+  );
 
  /* =========================================================
    04 - BUILD LIVE MACHINE ROWS
@@ -1481,18 +2229,17 @@ function LegacyDashboardApp({
 
 const machineRows = useMemo(() => {
   return activeMachine.points.map((point) => {
-    const liveGuardOnValue = payloadValueAtPath(payload, point.guardTag);
-    const liveHealthyValue = payloadValueAtPath(payload, point.interlockTag);
-    const liveOpenCloseValue = payloadValueAtPath(payload, `${point.guardTag}_OpenClose`);
-    const liveLockStateValue = payloadValueAtPath(payload, `${point.interlockTag}_LockState`);
+    const liveGuardOnValue = point.guardTag ? payloadValueAtPath(payload, point.guardTag) : undefined;
+    const liveHealthyValue = point.interlockTag ? payloadValueAtPath(payload, point.interlockTag) : undefined;
+    const liveOpenCloseValue = point.guardTag ? payloadValueAtPath(payload, `${point.guardTag}_OpenClose`) : undefined;
+    const liveLockStateValue = point.interlockTag ? payloadValueAtPath(payload, `${point.interlockTag}_LockState`) : undefined;
 
     const openClose = normalizeOpenCloseState(liveOpenCloseValue)
       || normalizeOpenCloseState(liveGuardOnValue);
     const lockState = normalizeLockState(liveLockStateValue)
       || normalizeLockState(liveHealthyValue);
-    const interpretation = pointInterpretation(point, payload);
-    const hasLiveData = liveGuardOnValue !== undefined
-      || liveHealthyValue !== undefined
+    const interpretation = pointInterpretation(point, payload, logicOverrides);
+    const hasLiveData = (point.sourceFields || []).some((field) => payloadValueAtPath(payload, field.source_key) !== undefined)
       || liveOpenCloseValue !== undefined
       || liveLockStateValue !== undefined;
 
@@ -1506,7 +2253,7 @@ const machineRows = useMemo(() => {
       hasLiveData,
     };
   });
-}, [payload, activeMachine]);
+}, [payload, activeMachine, logicOverrides]);
 
   /* ====================================================   =====
      05 - LEFT PANEL ATTENTION LOGIC
@@ -1773,21 +2520,10 @@ const machineRows = useMemo(() => {
                     ? `MQTT connected${lastUpdated ? ` · ${lastUpdated.toLocaleTimeString()}` : ""}`
                     : apiError ? `Data unavailable · ${apiError}` : activeMachine.apiUrl ? "MQTT offline" : "No Data"}
                 />
-                {activeMachine.modelUrl && (
-                  <button
-                    onClick={() => {
-                      setViewMode((current) => current === "2d" ? "3d" : "2d");
-                      resetView();
-                    }}
-                  >
-                    {viewMode === "2d" ? "3D" : "2D"}
-                  </button>
-                )}
               </div>
             </div>
 
             <div className="studio-machine-frame">
-            {viewMode === "2d" ? (
             <div className={`machine-map ${activeZoomZone ? "zoomed" : ""}`}>
               <div className="machine-map-grid" />
 
@@ -1866,17 +2602,6 @@ const machineRows = useMemo(() => {
                 />
               )}
             </div>
-            ) : (
-              <Suspense fallback={<div className="machine-3d-loading">Loading 3D view…</div>}>
-                <Machine3DView
-                  machine={activeMachine}
-                  zones={zoneRows}
-                  selectedPoint={selectedPoint}
-                  onZoneClick={(zone) => selectZone(zone)}
-                  theme={theme}
-                />
-              </Suspense>
-            )}
             </div>
           </section>
 

@@ -5419,3 +5419,1004 @@ button:hover {
   .machine-model-upload-row { align-items: stretch; flex-direction: column; }
   .machine-model-upload-actions { justify-content: flex-end; }
 }
+
+
+/* =========================================================
+   AUGUST 14, 2026 — flexible Data Mapping + friendly logic rules
+========================================================= */
+
+/* Center the workspace artwork independently of the right-side arrow. */
+.admin-hub-card {
+  position: relative !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 18px !important;
+  padding: 26px 58px !important;
+  text-align: center !important;
+}
+.admin-hub-card > .admin-hub-icon {
+  flex: 0 0 auto;
+  margin: 0 auto !important;
+  align-self: center !important;
+}
+.admin-hub-card > span {
+  display: grid !important;
+  justify-items: center !important;
+  width: 100%;
+}
+.admin-hub-card > em {
+  position: absolute !important;
+  top: 50% !important;
+  right: 24px !important;
+  margin: 0 !important;
+  transform: translateY(-50%) !important;
+}
+
+/* Data Mapping now has one or as many fields as a point needs. */
+.point-mapping-table.flexible-fields {
+  overflow: auto;
+}
+.point-mapping-table.flexible-fields .point-mapping-head,
+.point-mapping-table.flexible-fields .point-mapping-row {
+  min-width: 1060px;
+  grid-template-columns: 62px minmax(170px, .9fr) minmax(340px, 1.7fr) minmax(150px, .7fr) 130px 38px;
+}
+.point-fields-cell {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+.point-field-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 7px;
+}
+.point-field-row > span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  color: var(--admin-muted, #8e969d);
+  border: 1px solid var(--admin-line, #30363b);
+  border-radius: 7px;
+  font-size: 9px;
+  font-weight: 800;
+}
+.point-field-row > input {
+  width: 100%;
+}
+.point-field-row > button {
+  width: 32px !important;
+  height: 32px !important;
+}
+.point-add-field-button {
+  width: max-content !important;
+  height: 30px !important;
+  padding: 0 10px !important;
+  color: var(--admin-text, #edf0f2) !important;
+  border-color: var(--admin-line, #373d42) !important;
+  background: var(--admin-panel-strong, #20252a) !important;
+  font-size: 9px !important;
+}
+
+.logic-rule-list {
+  display: grid;
+  gap: 10px;
+}
+.logic-rule-card {
+  display: grid;
+  gap: 13px;
+  padding: 14px;
+  border: 1px solid var(--admin-line, #2d3338);
+  border-radius: 12px;
+  background: var(--admin-panel, #101315);
+}
+.logic-rule-topline {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  align-items: end;
+  gap: 10px;
+}
+.logic-rule-name {
+  display: grid;
+  gap: 5px;
+  color: var(--admin-muted, #8e969d);
+  font-size: 9px;
+  font-weight: 700;
+}
+.logic-rule-name input,
+.logic-sentence input,
+.logic-sentence select {
+  height: 36px;
+  color: var(--admin-text, #eef1f3);
+  border: 1px solid var(--admin-line, #343a3f);
+  border-radius: 8px;
+  background: var(--admin-panel-strong, #0f1214);
+  padding: 0 10px;
+  font-size: 10px;
+}
+.logic-rule-enabled {
+  display: inline-flex;
+  height: 36px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid var(--admin-line, #343a3f);
+  border-radius: 8px;
+  font-size: 9px;
+}
+.logic-rule-delete {
+  height: 36px !important;
+  color: var(--admin-danger, #ff8c93) !important;
+}
+.logic-sentence {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--admin-line-soft, #ffffff12);
+  border-radius: 10px;
+  background: var(--admin-bg, #0d0f11);
+  color: var(--admin-muted, #8e969d);
+  font-size: 10px;
+}
+.logic-sentence b {
+  color: var(--admin-accent, #aeb8ff);
+  letter-spacing: .08em;
+}
+.logic-sentence input[type="number"] {
+  width: 70px;
+}
+.logic-sentence input:not([type="number"]) {
+  width: 90px;
+}
+.logic-field-picker {
+  display: grid;
+  gap: 8px;
+}
+.logic-field-picker > strong {
+  font-size: 10px;
+}
+.logic-field-picker > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.logic-field-picker label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 9px;
+  border: 1px solid var(--admin-line, #343a3f);
+  border-radius: 8px;
+  background: var(--admin-panel-strong, #15191c);
+  cursor: pointer;
+  font-size: 9px;
+}
+.logic-field-picker label:has(input:checked) {
+  border-color: var(--admin-accent, #aeb8ff);
+  background: color-mix(in srgb, var(--admin-accent, #aeb8ff) 12%, transparent);
+}
+.logic-field-picker p,
+.logic-rule-empty {
+  margin: 0;
+  color: var(--admin-muted, #8e969d);
+  font-size: 10px;
+}
+.logic-rule-empty {
+  padding: 18px;
+  border: 1px dashed var(--admin-line, #343a3f);
+  border-radius: 10px;
+  text-align: center;
+}
+.logic-rule-example {
+  color: var(--admin-muted, #8e969d);
+  border-left: 2px solid var(--admin-accent, #aeb8ff);
+  padding-left: 10px;
+  font-size: 9px;
+  line-height: 1.55;
+}
+.field-fallback {
+  margin-top: 10px;
+}
+
+@media (max-width: 760px) {
+  .admin-hub-card { padding-inline: 48px !important; }
+  .logic-rule-topline { grid-template-columns: 1fr auto; }
+  .logic-rule-delete { grid-column: span 2; width: 100% !important; }
+}
+
+/* =========================================================
+   AUG 14 V2 — FLEXIBLE DATA MAPPING + FRIENDLY LOGIC BUILDER
+========================================================= */
+
+/* Keep Add Field beside the field it belongs to instead of below the row. */
+.point-fields-cell {
+  gap: 6px !important;
+}
+
+.point-field-row {
+  grid-template-columns: 26px minmax(0, 1fr) auto !important;
+  gap: 8px !important;
+}
+
+.point-field-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.point-field-actions > button,
+.point-field-row .point-add-field-button,
+.point-field-row .point-remove-field-button {
+  display: grid;
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px;
+  place-items: center;
+  padding: 0 !important;
+  border-radius: 8px;
+  font-size: 16px !important;
+  line-height: 1;
+}
+
+.point-field-row .point-add-field-button {
+  color: var(--admin-accent, #aeb8ff) !important;
+  border-color: color-mix(in srgb, var(--admin-accent, #aeb8ff) 42%, var(--admin-line, #373d42)) !important;
+  background: color-mix(in srgb, var(--admin-accent, #aeb8ff) 9%, var(--admin-panel-strong, #20252a)) !important;
+}
+
+.point-field-row .point-add-field-button:hover {
+  color: var(--admin-accent-ink, #10131a) !important;
+  background: var(--admin-accent, #aeb8ff) !important;
+  border-color: var(--admin-accent, #aeb8ff) !important;
+}
+
+.point-field-row .point-remove-field-button {
+  color: var(--admin-danger, #ff8c93) !important;
+  border: 1px solid color-mix(in srgb, var(--admin-danger, #ff8c93) 28%, transparent) !important;
+  background: color-mix(in srgb, var(--admin-danger, #ff8c93) 8%, transparent) !important;
+}
+
+/* Value meaning modal: use the available width instead of leaving one field on half the screen. */
+.value-rules-modal-shell {
+  width: min(1180px, calc(100vw - 40px)) !important;
+}
+
+.point-value-rules {
+  gap: 16px !important;
+  padding: 22px !important;
+}
+
+.value-rule-channels.single {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.value-rule-channels.single .value-rule-channel {
+  width: 100%;
+}
+
+.value-rule-channel {
+  overflow: hidden;
+}
+
+.value-rule-head,
+.value-rule-row {
+  grid-template-columns: minmax(90px, .65fr) minmax(180px, 1.2fr) minmax(130px, .8fr) 58px 38px !important;
+}
+
+.value-rule-fallback.field-fallback {
+  margin-top: 4px !important;
+  grid-template-columns: minmax(210px, 1.3fr) minmax(150px, .8fr) minmax(130px, .65fr) 58px !important;
+  gap: 9px;
+  align-items: center;
+}
+
+/* Friendly, general-purpose Logic Builder. */
+.logic-rules-heading {
+  align-items: center !important;
+}
+
+.logic-rules-heading > button {
+  margin-left: auto;
+}
+
+.logic-rule-list {
+  display: grid;
+  gap: 14px;
+}
+
+.logic-rule-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--admin-line, #2d3338);
+  border-radius: 14px;
+  background: var(--admin-panel, #101315);
+}
+
+.logic-rule-topline {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.logic-rule-name {
+  display: grid;
+  gap: 6px;
+  color: var(--admin-muted, #8e969d);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.logic-rule-name > span {
+  letter-spacing: .04em;
+}
+
+.logic-rule-name input,
+.logic-condition-body input,
+.logic-condition-body select,
+.logic-condition-join select,
+.logic-outcome-grid select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 0 10px;
+  color: var(--admin-text, #eef1f3);
+  border: 1px solid var(--admin-line, #343a3f);
+  border-radius: 8px;
+  outline: none;
+  background: var(--admin-panel-strong, #0f1214);
+  font: inherit;
+  font-size: 10px;
+}
+
+.logic-rule-name input:focus,
+.logic-condition-body input:focus,
+.logic-condition-body select:focus,
+.logic-condition-join select:focus,
+.logic-outcome-grid select:focus {
+  border-color: var(--admin-accent, #aeb8ff);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--admin-accent, #aeb8ff) 12%, transparent);
+}
+
+.logic-rule-enabled {
+  display: inline-flex;
+  height: 38px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid var(--admin-line, #343a3f);
+  border-radius: 8px;
+  background: var(--admin-panel-strong, #0f1214);
+  font-size: 9px;
+}
+
+.logic-rule-delete {
+  height: 38px !important;
+  color: var(--admin-danger, #ff8c93) !important;
+  border-color: color-mix(in srgb, var(--admin-danger, #ff8c93) 28%, var(--admin-line, #343a3f)) !important;
+  background: color-mix(in srgb, var(--admin-danger, #ff8c93) 7%, transparent) !important;
+}
+
+.logic-builder {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, .75fr);
+  gap: 12px;
+}
+
+.logic-builder-block {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--admin-line-soft, #ffffff12);
+  border-radius: 12px;
+  background: var(--admin-bg, #0b0e10);
+}
+
+.logic-builder-block > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.logic-builder-block > header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.logic-builder-block > header > div > span {
+  color: var(--admin-accent, #aeb8ff);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .14em;
+}
+
+.logic-builder-block > header > div > strong {
+  font-size: 11px;
+}
+
+.logic-condition-join {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--admin-muted, #8e969d);
+  font-size: 9px;
+}
+
+.logic-condition-join select {
+  width: 130px;
+}
+
+.logic-condition-list {
+  display: grid;
+  gap: 8px;
+}
+
+.logic-condition-card {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--admin-line, #293139);
+  border-radius: 10px;
+  background: var(--admin-panel, #11161a);
+}
+
+.logic-condition-number {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  color: var(--admin-accent, #aeb8ff);
+  border: 1px solid color-mix(in srgb, var(--admin-accent, #aeb8ff) 32%, var(--admin-line, #343a3f));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--admin-accent, #aeb8ff) 7%, transparent);
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.logic-condition-body {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+
+.logic-condition-type-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 240px) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.logic-condition-type-row > label,
+.logic-outcome-grid > label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--admin-muted, #8e969d);
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.logic-condition-remove {
+  display: grid;
+  width: 36px !important;
+  height: 36px !important;
+  place-items: center;
+  padding: 0 !important;
+  color: var(--admin-danger, #ff8c93) !important;
+  border-color: color-mix(in srgb, var(--admin-danger, #ff8c93) 28%, transparent) !important;
+  background: color-mix(in srgb, var(--admin-danger, #ff8c93) 7%, transparent) !important;
+}
+
+.logic-field-condition {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 110px minmax(90px, .45fr);
+  gap: 7px;
+}
+
+.logic-group-condition {
+  display: grid;
+  gap: 9px;
+}
+
+.logic-group-sentence {
+  display: grid;
+  grid-template-columns: auto minmax(105px, 135px) 76px auto minmax(80px, 110px);
+  align-items: center;
+  gap: 7px;
+  color: var(--admin-muted, #8e969d);
+  font-size: 9px;
+}
+
+.logic-group-sentence > span:first-child {
+  color: var(--admin-text, #eef1f3);
+  font-weight: 750;
+}
+
+.logic-field-selector {
+  overflow: hidden;
+  border: 1px solid var(--admin-line, #2e353b);
+  border-radius: 9px;
+  background: var(--admin-panel-strong, #0f1214);
+}
+
+.logic-field-selector > summary {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 11px;
+  color: var(--admin-text, #eef1f3);
+  cursor: pointer;
+  list-style: none;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.logic-field-selector > summary::-webkit-details-marker {
+  display: none;
+}
+
+.logic-field-selector > summary::after {
+  color: var(--admin-muted, #8e969d);
+  content: "▾";
+}
+
+.logic-field-selector[open] > summary::after {
+  content: "▴";
+}
+
+.logic-field-selector > summary > span {
+  margin-left: auto;
+  color: var(--admin-muted, #8e969d);
+  font-size: 8px;
+  font-weight: 650;
+}
+
+.logic-field-selector > div {
+  display: flex;
+  max-height: 150px;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 9px;
+  overflow: auto;
+  border-top: 1px solid var(--admin-line-soft, #ffffff12);
+}
+
+.logic-field-selector label {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--admin-line, #343a3f);
+  border-radius: 8px;
+  background: var(--admin-panel, #15191c);
+  cursor: pointer;
+  font-size: 8px;
+}
+
+.logic-field-selector label:has(input:checked) {
+  border-color: var(--admin-accent, #aeb8ff);
+  background: color-mix(in srgb, var(--admin-accent, #aeb8ff) 11%, transparent);
+}
+
+.logic-field-selector p {
+  margin: 0;
+  color: var(--admin-muted, #8e969d);
+  font-size: 9px;
+}
+
+.logic-add-condition {
+  width: max-content !important;
+  height: 32px !important;
+  padding: 0 11px !important;
+  color: var(--admin-accent, #aeb8ff) !important;
+  border-color: color-mix(in srgb, var(--admin-accent, #aeb8ff) 34%, var(--admin-line, #343a3f)) !important;
+  background: color-mix(in srgb, var(--admin-accent, #aeb8ff) 7%, transparent) !important;
+}
+
+.logic-outcome-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.logic-target-selector {
+  margin-top: 1px;
+}
+
+.logic-else-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 10px;
+  color: var(--admin-muted, #8e969d);
+  border: 1px dashed var(--admin-line, #343a3f);
+  border-radius: 9px;
+  font-size: 9px;
+}
+
+.logic-else-note b {
+  color: var(--admin-text, #eef1f3);
+}
+
+.logic-rule-empty {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 24px;
+  color: var(--admin-muted, #8e969d);
+  border: 1px dashed var(--admin-line, #343a3f);
+  border-radius: 12px;
+  text-align: center;
+}
+
+.logic-rule-empty strong {
+  color: var(--admin-text, #eef1f3);
+  font-size: 11px;
+}
+
+.logic-rule-empty span {
+  font-size: 9px;
+}
+
+@media (max-width: 1180px) {
+  .logic-builder {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .logic-rule-topline {
+    grid-template-columns: 1fr auto;
+  }
+
+  .logic-rule-delete {
+    grid-column: span 2;
+    width: 100% !important;
+  }
+
+  .logic-field-condition,
+  .logic-outcome-grid,
+  .logic-group-sentence {
+    grid-template-columns: 1fr;
+  }
+
+  .logic-condition-type-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .value-rule-head {
+    display: none !important;
+  }
+
+  .value-rule-row,
+  .value-rule-fallback.field-fallback {
+    grid-template-columns: 1fr 1fr !important;
+  }
+}
+
+/* =========================================================
+   AUGUST 14, 2026 — clearer scenario-based Logic Rules
+========================================================= */
+
+/* Guarantee the workspace artwork is centered independently of the arrow. */
+.admin-hub-card {
+  position: relative !important;
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  grid-template-rows: auto auto !important;
+  justify-items: center !important;
+  align-content: center !important;
+  gap: 18px !important;
+  padding: 28px 72px !important;
+  text-align: center !important;
+}
+
+.admin-hub-card > .admin-hub-icon {
+  position: relative !important;
+  inset: auto !important;
+  justify-self: center !important;
+  align-self: center !important;
+  margin: 0 !important;
+  transform: none !important;
+}
+
+.admin-hub-card > span {
+  width: 100% !important;
+  justify-items: center !important;
+  text-align: center !important;
+}
+
+.admin-hub-card > em {
+  position: absolute !important;
+  top: 50% !important;
+  right: 28px !important;
+  margin: 0 !important;
+  transform: translateY(-50%) !important;
+}
+
+.logic-rules-section {
+  display: grid;
+  gap: 14px;
+}
+
+.logic-rules-heading {
+  margin-bottom: 0 !important;
+}
+
+.logic-rules-heading > .logic-add-rule-button {
+  width: max-content !important;
+  min-width: 126px !important;
+  height: 36px !important;
+  margin-left: auto !important;
+  padding: 0 14px !important;
+  color: #11161b !important;
+  border: 1px solid var(--admin-accent, #aeb8ff) !important;
+  border-radius: 9px !important;
+  background: var(--admin-accent, #aeb8ff) !important;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--admin-accent, #aeb8ff) 16%, transparent) !important;
+  font-size: 9px !important;
+  font-weight: 850 !important;
+}
+
+.logic-rules-heading > .logic-add-rule-button:hover {
+  border-color: color-mix(in srgb, var(--admin-accent, #aeb8ff) 84%, #fff) !important;
+  background: color-mix(in srgb, var(--admin-accent, #aeb8ff) 86%, #fff) !important;
+  transform: translateY(-1px);
+}
+
+.logic-scenario-library {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--admin-line, #2d3338);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--admin-panel, #101315) 94%, transparent);
+}
+
+.logic-scenario-library-heading > div {
+  display: grid;
+  gap: 2px;
+}
+
+.logic-scenario-library-heading strong {
+  color: var(--admin-text, #eef1f3);
+  font-size: 11px;
+}
+
+.logic-scenario-library-heading span {
+  color: var(--admin-muted, #8e969d);
+  font-size: 8.5px;
+}
+
+.logic-scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.logic-scenario-card {
+  position: relative;
+  display: grid !important;
+  min-width: 0;
+  min-height: 132px;
+  align-content: start;
+  gap: 5px;
+  padding: 12px !important;
+  color: var(--admin-text, #eef1f3) !important;
+  border: 1px solid var(--admin-line, #2e353b) !important;
+  border-radius: 11px !important;
+  background: var(--admin-panel-strong, #0d1114) !important;
+  cursor: pointer;
+  text-align: left !important;
+  box-shadow: none !important;
+}
+
+.logic-scenario-card:hover,
+.logic-scenario-card:focus-visible {
+  border-color: color-mix(in srgb, var(--admin-accent, #aeb8ff) 52%, var(--admin-line, #2e353b)) !important;
+  background: color-mix(in srgb, var(--admin-accent, #aeb8ff) 6%, var(--admin-panel-strong, #0d1114)) !important;
+  outline: none;
+  transform: translateY(-2px);
+}
+
+.logic-scenario-badge {
+  width: max-content;
+  padding: 4px 7px;
+  color: var(--admin-accent, #aeb8ff);
+  border: 1px solid color-mix(in srgb, var(--admin-accent, #aeb8ff) 30%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--admin-accent, #aeb8ff) 8%, transparent);
+  font-size: 7px;
+  font-weight: 850;
+  letter-spacing: .03em;
+}
+
+.logic-scenario-card > strong {
+  margin-top: 2px;
+  font-size: 10px;
+}
+
+.logic-scenario-card > small {
+  color: var(--admin-muted, #8e969d);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.logic-scenario-card > em {
+  margin-top: 3px;
+  color: color-mix(in srgb, var(--admin-accent, #aeb8ff) 74%, var(--admin-muted, #8e969d));
+  font-size: 7.5px;
+  font-style: normal;
+  line-height: 1.4;
+}
+
+.logic-scenario-card > b {
+  margin-top: auto;
+  padding-top: 4px;
+  color: var(--admin-text, #eef1f3);
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.logic-rule-list {
+  display: grid;
+  gap: 14px;
+}
+
+.logic-rule-card {
+  gap: 12px !important;
+  padding: 14px !important;
+}
+
+.logic-plain-summary {
+  display: grid;
+  gap: 4px;
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, var(--admin-accent, #aeb8ff) 20%, var(--admin-line, #2d3338));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--admin-accent, #aeb8ff) 5%, var(--admin-panel-strong, #0f1214));
+}
+
+.logic-plain-summary > span {
+  color: var(--admin-accent, #aeb8ff);
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.logic-plain-summary > strong {
+  color: var(--admin-text, #eef1f3);
+  font-size: 10px;
+  font-weight: 680;
+  line-height: 1.5;
+}
+
+.logic-plain-summary > small {
+  color: var(--admin-muted, #8e969d);
+  font-size: 8px;
+  line-height: 1.4;
+}
+
+.logic-builder {
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr) !important;
+}
+
+.logic-builder-block > header > div > span {
+  letter-spacing: .11em !important;
+}
+
+.logic-condition-join {
+  display: grid !important;
+  gap: 4px !important;
+}
+
+.logic-condition-join select {
+  width: 150px !important;
+}
+
+.logic-human-line {
+  display: grid;
+  align-items: center;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid var(--admin-line-soft, #ffffff12);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--admin-bg, #0b0e10) 76%, transparent);
+}
+
+.logic-human-line > span {
+  color: var(--admin-text, #eef1f3);
+  font-size: 9px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.logic-field-condition {
+  grid-template-columns: auto minmax(190px, 1fr) 100px minmax(80px, .35fr) !important;
+}
+
+.logic-group-sentence {
+  grid-template-columns: auto minmax(105px, 130px) 74px auto minmax(80px, 100px) !important;
+}
+
+.logic-group-sentence:has(select option[value="all"]:checked),
+.logic-group-sentence:has(select option[value="any"]:checked) {
+  grid-template-columns: auto minmax(105px, 130px) auto minmax(80px, 100px) !important;
+}
+
+.logic-field-selector > summary {
+  font-size: 8.5px !important;
+}
+
+.logic-add-condition {
+  min-width: 160px !important;
+}
+
+.logic-else-note {
+  align-items: flex-start !important;
+  flex-direction: column;
+  gap: 2px !important;
+}
+
+.logic-rule-empty {
+  padding: 18px !important;
+}
+
+@media (max-width: 1220px) {
+  .logic-scenario-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .logic-builder {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-hub-card {
+    padding: 24px 58px !important;
+  }
+
+  .admin-hub-card > em {
+    right: 20px !important;
+  }
+
+  .logic-rules-heading {
+    align-items: flex-start !important;
+    flex-wrap: wrap;
+  }
+
+  .logic-rules-heading > .logic-add-rule-button {
+    width: 100% !important;
+    margin: 4px 0 0 !important;
+  }
+
+  .logic-scenario-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .logic-field-condition,
+  .logic-group-sentence,
+  .logic-group-sentence:has(select option[value="all"]:checked),
+  .logic-group-sentence:has(select option[value="any"]:checked) {
+    grid-template-columns: 1fr !important;
+  }
+}

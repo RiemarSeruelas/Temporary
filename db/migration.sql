@@ -76,7 +76,8 @@ ALTER TABLE app.machine_configurations
   ADD COLUMN IF NOT EXISTS description TEXT,
   ADD COLUMN IF NOT EXISTS config_revision INTEGER NOT NULL DEFAULT 1,
   ADD COLUMN IF NOT EXISTS created_by TEXT,
-  ADD COLUMN IF NOT EXISTS updated_by TEXT;
+  ADD COLUMN IF NOT EXISTS updated_by TEXT,
+  ADD COLUMN IF NOT EXISTS logic_rules JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 CREATE TABLE IF NOT EXISTS app.operator_shift_registrations (
   id BIGSERIAL PRIMARY KEY,
@@ -137,16 +138,6 @@ CREATE TABLE IF NOT EXISTS app.machine_images (
 );
 
 
-CREATE TABLE IF NOT EXISTS app.machine_models (
-  machine_id TEXT PRIMARY KEY REFERENCES app.machine_configurations(id) ON DELETE CASCADE,
-  model_base64 TEXT NOT NULL,
-  mime_type TEXT NOT NULL DEFAULT 'model/gltf-binary',
-  file_name TEXT,
-  size_bytes BIGINT,
-  sha256 TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
 
 CREATE TABLE IF NOT EXISTS app.machine_segments (
   machine_id TEXT NOT NULL REFERENCES app.machine_configurations(id) ON DELETE CASCADE,
@@ -173,7 +164,8 @@ CREATE TABLE IF NOT EXISTS app.machine_points (
   segment_id TEXT,
   source_key_primary TEXT NOT NULL,
   source_key_secondary TEXT,
-  status_mode TEXT NOT NULL DEFAULT 'door_interlock',
+  source_fields JSONB NOT NULL DEFAULT '[]'::jsonb,
+  status_mode TEXT NOT NULL DEFAULT 'mapped_values',
   safe_config JSONB NOT NULL DEFAULT '{"primary":"CLOSE","secondary":"LOCK"}'::jsonb,
   value_rules JSONB NOT NULL DEFAULT '{"primary":[{"value":"1","label":"Closed","severity":"safe","color":"#22c55e"},{"value":"0","label":"Open","severity":"warning","color":"#f59e0b"}],"secondary":[{"value":"1","label":"Locked","severity":"safe","color":"#22c55e"},{"value":"0","label":"Unlocked","severity":"danger","color":"#ef4444"}],"fallback":{"label":"Unknown","severity":"warning","color":"#f59e0b"}}'::jsonb,
   display_order INTEGER NOT NULL DEFAULT 0,
@@ -184,6 +176,7 @@ CREATE TABLE IF NOT EXISTS app.machine_points (
 );
 
 ALTER TABLE app.machine_points
+  ADD COLUMN IF NOT EXISTS source_fields JSONB NOT NULL DEFAULT '[]'::jsonb,
   ADD COLUMN IF NOT EXISTS value_rules JSONB NOT NULL DEFAULT '{"primary":[{"value":"1","label":"Closed","severity":"safe","color":"#22c55e"},{"value":"0","label":"Open","severity":"warning","color":"#f59e0b"}],"secondary":[{"value":"1","label":"Locked","severity":"safe","color":"#22c55e"},{"value":"0","label":"Unlocked","severity":"danger","color":"#ef4444"}],"fallback":{"label":"Unknown","severity":"warning","color":"#f59e0b"}}'::jsonb;
 
 CREATE INDEX IF NOT EXISTS idx_machine_segments_order
@@ -207,5 +200,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_confirmations_registration_once
   WHERE registration_id IS NOT NULL AND confirmation_status = 'confirmed';
 
 
--- No sample machine, segment, point, image, or 3D model is inserted here.
+-- No sample machine, segment, point, or image is inserted here.
 -- The dashboard now displays No Data until real configuration is saved through Admin.
+
+
+-- Flexible field mapping + logic rules (August 14, 2026)
+-- source_fields stores any number of MQTT fields per point. The existing
+-- primary/secondary columns remain for backward compatibility.
+-- logic_rules stores the no-code IF/THEN exception rules configured in Admin.

@@ -131,305 +131,6 @@ function syncPointFieldsForSave(point) {
   };
 }
 
-function newLogicCondition(index = 0) {
-  return {
-    id: `condition-${Date.now()}-${index}`,
-    type: "field",
-    field_key: "",
-    operator: "equals",
-    expected_value: "1",
-    field_keys: [],
-    comparator: "exactly",
-    count: 1,
-  };
-}
-
-function normalizeLogicCondition(condition, index = 0) {
-  const type = condition?.type === "group" ? "group" : "field";
-  return {
-    id: condition?.id || `condition-${index + 1}`,
-    type,
-    field_key: condition?.field_key || "",
-    operator: condition?.operator === "not_equals" ? "not_equals" : "equals",
-    expected_value: String(condition?.expected_value ?? "1"),
-    field_keys: Array.isArray(condition?.field_keys)
-      ? [...new Set(condition.field_keys.filter(Boolean))]
-      : [],
-    comparator: ["exactly", "at_least", "at_most", "all", "any"].includes(condition?.comparator)
-      ? condition.comparator
-      : "exactly",
-    count: Math.max(0, Number(condition?.count ?? 1)),
-  };
-}
-
-function cloneLogicRules(value) {
-  return (Array.isArray(value) ? value : []).map((rule, index) => {
-    if (Array.isArray(rule?.conditions)) {
-      return {
-        id: rule.id || `logic-${index + 1}`,
-        name: rule.name || `Logic rule ${index + 1}`,
-        enabled: rule.enabled !== false,
-        condition_join: rule.condition_join === "any" ? "any" : "all",
-        conditions: rule.conditions.map((condition, conditionIndex) => normalizeLogicCondition(condition, conditionIndex)),
-        action: ["safe", "warning", "danger", "neutral", "ignore"].includes(rule.action) ? rule.action : "safe",
-        target_mode: rule.target_mode === "selected" ? "selected" : "conditions",
-        target_field_keys: Array.isArray(rule.target_field_keys)
-          ? [...new Set(rule.target_field_keys.filter(Boolean))]
-          : [],
-        template: rule.template || "custom",
-      };
-    }
-
-    // Backward compatibility with the first Logic Rules format.
-    const legacyFields = Array.isArray(rule?.field_keys)
-      ? [...new Set(rule.field_keys.filter(Boolean))]
-      : [];
-    const legacyMode = ["count", "all", "any"].includes(rule?.match_mode) ? rule.match_mode : "count";
-    const legacyComparator = legacyMode === "all"
-      ? "all"
-      : legacyMode === "any"
-        ? "any"
-        : ["exactly", "at_least", "at_most"].includes(rule?.comparator)
-          ? rule.comparator
-          : "exactly";
-
-    return {
-      id: rule?.id || `logic-${index + 1}`,
-      name: rule?.name || `Logic rule ${index + 1}`,
-      enabled: rule?.enabled !== false,
-      condition_join: "all",
-      conditions: [{
-        id: `legacy-condition-${index + 1}`,
-        type: "group",
-        field_key: "",
-        operator: "equals",
-        expected_value: String(rule?.expected_value ?? "0"),
-        field_keys: legacyFields,
-        comparator: legacyComparator,
-        count: Math.max(0, Number(rule?.count ?? 1)),
-      }],
-      action: rule?.action === "ignore" ? "ignore" : "safe",
-      target_mode: "conditions",
-      target_field_keys: [],
-      template: "custom",
-    };
-  });
-}
-
-function newLogicRule(index = 0) {
-  return {
-    id: `logic-${Date.now()}-${index}`,
-    name: `Logic rule ${index + 1}`,
-    enabled: true,
-    condition_join: "all",
-    conditions: [newLogicCondition(0)],
-    action: "safe",
-    target_mode: "conditions",
-    target_field_keys: [],
-    template: "custom",
-  };
-}
-
-const LOGIC_SCENARIOS = [
-  {
-    id: "interchangeable",
-    title: "Interchangeable signals",
-    badge: "Exactly X",
-    description: "Use when several switches can trade states and a certain number being ON/OFF is still normal.",
-    example: "Example: Doors 36–39 are healthy when exactly 2 of the 4 signals are 0.",
-  },
-  {
-    id: "redundant",
-    title: "All signals must agree",
-    badge: "All",
-    description: "Use for redundant guards or sensors where every selected signal must show the expected value.",
-    example: "Example: both guard switches must be 1 before the guard is considered healthy.",
-  },
-  {
-    id: "either",
-    title: "Any signal is enough",
-    badge: "Any",
-    description: "Use when more than one sensor can prove the same condition and any one of them is acceptable.",
-    example: "Example: Sensor A or Sensor B can confirm product presence.",
-  },
-  {
-    id: "voting",
-    title: "Voting / majority",
-    badge: "At least X",
-    description: "Use when a minimum number of sensors must agree before the condition is accepted.",
-    example: "Example: at least 2 of 3 safety sensors must read 1.",
-  },
-  {
-    id: "mode_ignore",
-    title: "Ignore during a mode",
-    badge: "A + B",
-    description: "Use when a signal is normally a warning but should be ignored during cleaning, setup, maintenance, or another mode.",
-    example: "Example: Cleaning Mode = 1 AND Door 5 = 0 → ignore Door 5.",
-  },
-  {
-    id: "exclusive",
-    title: "Only one should be active",
-    badge: "Exactly 1",
-    description: "Use for opposite-position sensors where one must be ON and the other OFF.",
-    example: "Example: Extended and Retracted sensors are healthy when exactly one is 1.",
-  },
-];
-
-function logicScenarioRule(template, index = 0) {
-  const base = newLogicRule(index);
-  const group = (comparator, count, expectedValue = "1") => ({
-    ...newLogicCondition(0),
-    type: "group",
-    comparator,
-    count,
-    expected_value: expectedValue,
-    field_key: "",
-    field_keys: [],
-  });
-
-  if (template === "interchangeable") return {
-    ...base,
-    name: "Interchangeable signals",
-    template,
-    conditions: [group("exactly", 2, "0")],
-    action: "safe",
-  };
-  if (template === "redundant") return {
-    ...base,
-    name: "All signals must agree",
-    template,
-    conditions: [group("all", 1, "1")],
-    action: "safe",
-  };
-  if (template === "either") return {
-    ...base,
-    name: "Any signal is enough",
-    template,
-    conditions: [group("any", 1, "1")],
-    action: "safe",
-  };
-  if (template === "voting") return {
-    ...base,
-    name: "Voting / majority",
-    template,
-    conditions: [group("at_least", 2, "1")],
-    action: "safe",
-  };
-  if (template === "exclusive") return {
-    ...base,
-    name: "Only one should be active",
-    template,
-    conditions: [group("exactly", 1, "1")],
-    action: "safe",
-  };
-  if (template === "mode_ignore") return {
-    ...base,
-    name: "Ignore during a mode",
-    template,
-    condition_join: "all",
-    conditions: [
-      { ...newLogicCondition(0), expected_value: "1" },
-      { ...newLogicCondition(1), expected_value: "0" },
-    ],
-    action: "ignore",
-    target_mode: "selected",
-  };
-  return { ...base, template: "custom" };
-}
-
-function logicConditionSentence(condition) {
-  if (condition.type === "field") {
-    const field = condition.field_key || "[choose a signal]";
-    return `${field} ${condition.operator === "not_equals" ? "is not" : "is"} ${condition.expected_value || "[value]"}`;
-  }
-
-  const count = condition.field_keys?.length || 0;
-  const selected = count ? `${count} selected signal${count === 1 ? "" : "s"}` : "the selected signals";
-  if (condition.comparator === "all") return `all of ${selected} are ${condition.expected_value || "[value]"}`;
-  if (condition.comparator === "any") return `any of ${selected} are ${condition.expected_value || "[value]"}`;
-  const compareLabel = condition.comparator === "at_least"
-    ? "at least"
-    : condition.comparator === "at_most" ? "at most" : "exactly";
-  return `${compareLabel} ${condition.count} of ${selected} are ${condition.expected_value || "[value]"}`;
-}
-
-function logicRuleSentence(rule) {
-  const conditionText = rule.conditions.map(logicConditionSentence).join(rule.condition_join === "any" ? " OR " : " AND ");
-  const actionText = {
-    safe: "treat the affected signals as Good",
-    warning: "treat the affected signals as Warning",
-    danger: "treat the affected signals as Critical",
-    neutral: "treat the affected signals as Information",
-    ignore: "ignore the affected signals",
-  }[rule.action] || "apply the selected result";
-  return `When ${conditionText || "the scenario matches"}, ${actionText}. Otherwise, normal Data Mapping applies.`;
-}
-
-function compareLogicValue(actualValue, expectedValue, operator = "equals") {
-  if (actualValue === undefined) return false;
-  const matches = canonicalIncomingValue(actualValue) === canonicalIncomingValue(expectedValue);
-  return operator === "not_equals" ? !matches : matches;
-}
-
-function evaluateLogicCondition(condition, payload) {
-  if (condition.type === "field") {
-    if (!condition.field_key) return { matched: false, fields: [] };
-    return {
-      matched: compareLogicValue(
-        payloadValueAtPath(payload, condition.field_key),
-        condition.expected_value,
-        condition.operator,
-      ),
-      fields: [condition.field_key],
-    };
-  }
-
-  const fieldKeys = condition.field_keys || [];
-  if (!fieldKeys.length) return { matched: false, fields: [] };
-  const values = fieldKeys.map((key) => payloadValueAtPath(payload, key));
-  if (values.some((value) => value === undefined)) return { matched: false, fields: fieldKeys };
-
-  const matches = values.map((value) => compareLogicValue(value, condition.expected_value, "equals"));
-  const matchCount = matches.filter(Boolean).length;
-  let matched = false;
-  if (condition.comparator === "all") matched = matches.every(Boolean);
-  else if (condition.comparator === "any") matched = matches.some(Boolean);
-  else if (condition.comparator === "at_least") matched = matchCount >= Number(condition.count || 0);
-  else if (condition.comparator === "at_most") matched = matchCount <= Number(condition.count || 0);
-  else matched = matchCount === Number(condition.count || 0);
-
-  return { matched, fields: fieldKeys };
-}
-
-function evaluateLogicRules(logicRules, payload) {
-  const overrides = new Map();
-
-  cloneLogicRules(logicRules).forEach((rule) => {
-    if (!rule.enabled || !rule.conditions.length) return;
-
-    const evaluations = rule.conditions.map((condition) => evaluateLogicCondition(condition, payload));
-    const matched = rule.condition_join === "any"
-      ? evaluations.some((evaluation) => evaluation.matched)
-      : evaluations.every((evaluation) => evaluation.matched);
-
-    if (!matched) return;
-
-    const conditionFields = [...new Set(evaluations.flatMap((evaluation) => evaluation.fields).filter(Boolean))];
-    const targetFields = rule.target_mode === "selected"
-      ? rule.target_field_keys
-      : conditionFields;
-
-    targetFields.forEach((key) => {
-      overrides.set(key, {
-        action: rule.action,
-        ruleName: rule.name || "Logic rule",
-      });
-    });
-  });
-
-  return overrides;
-}
-
 function polygonToSvgPoints(points) {
   return (Array.isArray(points) ? points : [])
     .map((point) => Array.isArray(point) ? `${point[0]},${point[1]}` : `${point.x},${point.y}`)
@@ -468,6 +169,13 @@ function machineZoneFromDatabase(segment) {
   };
 }
 
+function createAppSessionId() {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `session-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 export default function App() {
   const [accessRole, setAccessRole] = useState("temporary");
   const [adminAccessOpen, setAdminAccessOpen] = useState(false);
@@ -482,6 +190,57 @@ export default function App() {
   const [machineEditorOpen, setMachineEditorOpen] = useState(false);
   const [machineEditorSaving, setMachineEditorSaving] = useState(false);
   const machineConfigurationActionsRef = useRef(null);
+  const sessionRoleRef = useRef(accessRole);
+  const appSessionRef = useRef(null);
+
+  if (!appSessionRef.current) {
+    appSessionRef.current = {
+      id: createAppSessionId(),
+      startedAt: new Date().toISOString(),
+      ended: false,
+    };
+  }
+
+  useEffect(() => {
+    sessionRoleRef.current = accessRole;
+  }, [accessRole]);
+
+  useEffect(() => {
+    function finishSession() {
+      const session = appSessionRef.current;
+      if (!session || session.ended) return;
+      session.ended = true;
+
+      const body = JSON.stringify({
+        session_id: session.id,
+        started_at: session.startedAt,
+        access_role: sessionRoleRef.current,
+      });
+
+      try {
+        if (typeof navigator.sendBeacon === "function") {
+          const blob = new Blob([body], { type: "application/json" });
+          if (navigator.sendBeacon("/api/session/end", blob)) return;
+        }
+      } catch {
+        // Fall through to keepalive fetch.
+      }
+
+      fetch("/api/session/end", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        keepalive: true,
+      }).catch(() => {});
+    }
+
+    window.addEventListener("pagehide", finishSession);
+    window.addEventListener("beforeunload", finishSession);
+    return () => {
+      window.removeEventListener("pagehide", finishSession);
+      window.removeEventListener("beforeunload", finishSession);
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem("mespack-theme", theme);
@@ -705,7 +464,6 @@ function editorDraftFromMachine(machine) {
     image_mime_type: machine.image?.mime_type || "image/png",
     image_width: machine.image?.original_width || null,
     image_height: machine.image?.original_height || null,
-    logic_rules: cloneLogicRules(machine.logic_rules),
     segments: (machine.segments || []).map((segment) => ({
       ...segment,
       polygon_points: Array.isArray(segment.polygon_points) ? segment.polygon_points : [],
@@ -791,50 +549,29 @@ function interpretIncomingValue(rawValue, channelRules, fallback) {
   };
 }
 
-function pointInterpretation(point, payload, logicOverrides = new Map()) {
+function pointInterpretation(point, payload) {
   const fields = Array.isArray(point.sourceFields) ? point.sourceFields : [];
   if (!fields.length) return null;
+
   const states = fields.map((field) => {
     const interpreted = interpretIncomingValue(
       payloadValueAtPath(payload, field.source_key),
       field.value_rules,
       field.fallback,
     );
-    const override = logicOverrides.get(field.source_key);
-    if (!override) return { ...interpreted, sourceKey: field.source_key, fieldLabel: field.label };
-    if (override.action === "ignore") {
-      return {
-        ...interpreted,
-        sourceKey: field.source_key,
-        fieldLabel: field.label,
-        label: interpreted.rawLabel === "No Data" ? "No Data" : `${interpreted.label} · Ignored`,
-        className: "neutral",
-        color: "#64748b",
-        logicRule: override.ruleName,
-      };
-    }
 
-    const overrideStyles = {
-      safe: { className: "safe", color: "#22c55e", suffix: "Good" },
-      warning: { className: "warning", color: "#f59e0b", suffix: "Warning" },
-      danger: { className: "danger", color: "#ef4444", suffix: "Critical" },
-      neutral: { className: "neutral", color: "#64748b", suffix: "Information" },
-    };
-    const overrideStyle = overrideStyles[override.action] || overrideStyles.safe;
     return {
       ...interpreted,
       sourceKey: field.source_key,
       fieldLabel: field.label,
-      label: interpreted.rawLabel === "No Data" ? "No Data" : `${interpreted.label} · ${overrideStyle.suffix}`,
-      className: overrideStyle.className,
-      color: overrideStyle.color,
-      logicRule: override.ruleName,
     };
   });
+
   const priority = { danger: 3, warning: 2, neutral: 1, safe: 0 };
   const overall = states.slice().sort((first, second) => (
     (priority[second.className] ?? 1) - (priority[first.className] ?? 1)
   ))[0];
+
   return { states, overall };
 }
 
@@ -1222,120 +959,6 @@ function MachineConfigurationPage({
     }));
   }
 
-  function addLogicRule() {
-    addLogicScenario("custom");
-  }
-
-  function addLogicScenario(template) {
-    setDraft((current) => ({
-      ...current,
-      logic_rules: [
-        ...cloneLogicRules(current.logic_rules),
-        logicScenarioRule(template, current.logic_rules?.length || 0),
-      ],
-    }));
-  }
-
-  function updateLogicRule(ruleIndex, key, value) {
-    setDraft((current) => ({
-      ...current,
-      logic_rules: cloneLogicRules(current.logic_rules).map((rule, index) => index === ruleIndex
-        ? { ...rule, [key]: value }
-        : rule),
-    }));
-  }
-
-  function addLogicCondition(ruleIndex) {
-    setDraft((current) => ({
-      ...current,
-      logic_rules: cloneLogicRules(current.logic_rules).map((rule, index) => index === ruleIndex
-        ? { ...rule, conditions: [...rule.conditions, newLogicCondition(rule.conditions.length)] }
-        : rule),
-    }));
-  }
-
-  function updateLogicCondition(ruleIndex, conditionIndex, key, value) {
-    setDraft((current) => ({
-      ...current,
-      logic_rules: cloneLogicRules(current.logic_rules).map((rule, index) => {
-        if (index !== ruleIndex) return rule;
-        return {
-          ...rule,
-          conditions: rule.conditions.map((condition, indexInConditions) => indexInConditions === conditionIndex
-            ? {
-              ...condition,
-              [key]: key === "count" ? Math.max(0, Number(value || 0)) : value,
-              ...(key === "type" && value === "field"
-                ? { field_keys: [] }
-                : key === "type" && value === "group"
-                  ? { field_key: "" }
-                  : {}),
-            }
-            : condition),
-        };
-      }),
-    }));
-  }
-
-  function removeLogicCondition(ruleIndex, conditionIndex) {
-    setDraft((current) => ({
-      ...current,
-      logic_rules: cloneLogicRules(current.logic_rules).map((rule, index) => {
-        if (index !== ruleIndex) return rule;
-        const nextConditions = rule.conditions.filter((_, indexInConditions) => indexInConditions !== conditionIndex);
-        return {
-          ...rule,
-          conditions: nextConditions.length ? nextConditions : [newLogicCondition(0)],
-        };
-      }),
-    }));
-  }
-
-  function toggleLogicConditionField(ruleIndex, conditionIndex, fieldKey) {
-    setDraft((current) => ({
-      ...current,
-      logic_rules: cloneLogicRules(current.logic_rules).map((rule, index) => {
-        if (index !== ruleIndex) return rule;
-        return {
-          ...rule,
-          conditions: rule.conditions.map((condition, indexInConditions) => {
-            if (indexInConditions !== conditionIndex) return condition;
-            const hasField = condition.field_keys.includes(fieldKey);
-            return {
-              ...condition,
-              field_keys: hasField
-                ? condition.field_keys.filter((key) => key !== fieldKey)
-                : [...condition.field_keys, fieldKey],
-            };
-          }),
-        };
-      }),
-    }));
-  }
-
-  function toggleLogicTargetField(ruleIndex, fieldKey) {
-    setDraft((current) => ({
-      ...current,
-      logic_rules: cloneLogicRules(current.logic_rules).map((rule, index) => {
-        if (index !== ruleIndex) return rule;
-        const hasField = rule.target_field_keys.includes(fieldKey);
-        return {
-          ...rule,
-          target_field_keys: hasField
-            ? rule.target_field_keys.filter((key) => key !== fieldKey)
-            : [...rule.target_field_keys, fieldKey],
-        };
-      }),
-    }));
-  }
-
-  function removeLogicRule(ruleIndex) {
-    setDraft((current) => ({
-      ...current,
-      logic_rules: cloneLogicRules(current.logic_rules).filter((_, index) => index !== ruleIndex),
-    }));
-  }
-
   function addPointMapping(sourceKey = "") {
     const nextId = Math.max(0, ...draft.points.map((point) => Number(point.point_id) || 0)) + 1;
     setDraft((current) => ({
@@ -1432,7 +1055,6 @@ function MachineConfigurationPage({
           is_active: draft.is_active,
           config_revision: draft.config_revision,
           data_source: draft.data_source,
-          logic_rules: cloneLogicRules(draft.logic_rules),
           image_base64: draft.image_base64 || undefined,
           image_mime_type: draft.image_mime_type,
           image_width: draft.image_width,
@@ -1764,272 +1386,6 @@ function MachineConfigurationPage({
             </div>
           </section>
 
-          <section className="configurator-section logic-rules-section">
-            <div className="configurator-section-heading logic-rules-heading">
-              <span>Step 4</span>
-              <div>
-                <strong>Logic Rules</strong>
-                <small>Only use this when normal Data Mapping is not enough.</small>
-              </div>
-              <button type="button" className="logic-add-rule-button" onClick={addLogicRule}>+ Custom rule</button>
-            </div>
-
-            <div className="logic-scenario-library">
-              <div className="logic-scenario-library-heading">
-                <div>
-                  <strong>Start from a common scenario</strong>
-                  <span>Pick the situation that sounds closest. You can change the signals and values afterward.</span>
-                </div>
-              </div>
-              <div className="logic-scenario-grid">
-                {LOGIC_SCENARIOS.map((scenario) => (
-                  <button
-                    type="button"
-                    className="logic-scenario-card"
-                    key={scenario.id}
-                    onClick={() => addLogicScenario(scenario.id)}
-                  >
-                    <span className="logic-scenario-badge">{scenario.badge}</span>
-                    <strong>{scenario.title}</strong>
-                    <small>{scenario.description}</small>
-                    <em>{scenario.example}</em>
-                    <b aria-hidden="true">Add scenario →</b>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="logic-rule-list">
-              {cloneLogicRules(draft.logic_rules).map((rule, ruleIndex) => {
-                const availableKeys = [...new Set(
-                  draft.points
-                    .flatMap((point) => normalizePointSourceFields(point).map((field) => field.source_key))
-                    .filter(Boolean),
-                )];
-                const scenarioInfo = LOGIC_SCENARIOS.find((scenario) => scenario.id === rule.template);
-
-                return (
-                  <article className="logic-rule-card" key={rule.id}>
-                    <div className="logic-rule-topline">
-                      <label className="logic-rule-name">
-                        <span>Scenario name</span>
-                        <input value={rule.name} onChange={(event) => updateLogicRule(ruleIndex, "name", event.target.value)} />
-                      </label>
-                      <label className="logic-rule-enabled">
-                        <input type="checkbox" checked={rule.enabled} onChange={(event) => updateLogicRule(ruleIndex, "enabled", event.target.checked)} />
-                        <span>Enabled</span>
-                      </label>
-                      <button type="button" className="logic-rule-delete" onClick={() => removeLogicRule(ruleIndex)}>Delete</button>
-                    </div>
-
-                    <div className="logic-plain-summary">
-                      <span>In plain English</span>
-                      <strong>{logicRuleSentence(rule)}</strong>
-                      {scenarioInfo && <small>{scenarioInfo.example}</small>}
-                    </div>
-
-                    <div className="logic-builder">
-                      <section className="logic-builder-block logic-when-block">
-                        <header>
-                          <div>
-                            <span>1 · SITUATION</span>
-                            <strong>Describe when this special rule should happen</strong>
-                          </div>
-                          {rule.conditions.length > 1 && (
-                            <label className="logic-condition-join">
-                              <span>Between requirements</span>
-                              <select value={rule.condition_join} onChange={(event) => updateLogicRule(ruleIndex, "condition_join", event.target.value)}>
-                                <option value="all">ALL must be true</option>
-                                <option value="any">ANY can be true</option>
-                              </select>
-                            </label>
-                          )}
-                        </header>
-
-                        <div className="logic-condition-list">
-                          {rule.conditions.map((condition, conditionIndex) => (
-                            <div className="logic-condition-card" key={condition.id || conditionIndex}>
-                              <div className="logic-condition-number">{conditionIndex + 1}</div>
-
-                              <div className="logic-condition-body">
-                                <div className="logic-condition-type-row">
-                                  <label>
-                                    <span>This requirement checks</span>
-                                    <select
-                                      value={condition.type}
-                                      onChange={(event) => updateLogicCondition(ruleIndex, conditionIndex, "type", event.target.value)}
-                                    >
-                                      <option value="field">One signal</option>
-                                      <option value="group">Several signals together</option>
-                                    </select>
-                                  </label>
-
-                                  {rule.conditions.length > 1 && (
-                                    <button
-                                      type="button"
-                                      className="logic-condition-remove"
-                                      onClick={() => removeLogicCondition(ruleIndex, conditionIndex)}
-                                      aria-label={`Remove requirement ${conditionIndex + 1}`}
-                                    >×</button>
-                                  )}
-                                </div>
-
-                                {condition.type === "field" ? (
-                                  <div className="logic-human-line logic-field-condition">
-                                    <span>When</span>
-                                    <select
-                                      value={condition.field_key}
-                                      onChange={(event) => updateLogicCondition(ruleIndex, conditionIndex, "field_key", event.target.value)}
-                                      aria-label="Signal"
-                                    >
-                                      <option value="">Choose signal</option>
-                                      {availableKeys.map((fieldKey) => <option key={fieldKey} value={fieldKey}>{fieldKey}</option>)}
-                                    </select>
-                                    <select
-                                      value={condition.operator}
-                                      onChange={(event) => updateLogicCondition(ruleIndex, conditionIndex, "operator", event.target.value)}
-                                      aria-label="Comparison"
-                                    >
-                                      <option value="equals">is</option>
-                                      <option value="not_equals">is not</option>
-                                    </select>
-                                    <input
-                                      value={condition.expected_value}
-                                      onChange={(event) => updateLogicCondition(ruleIndex, conditionIndex, "expected_value", event.target.value)}
-                                      placeholder="Value"
-                                      aria-label="Expected value"
-                                    />
-                                  </div>
-                                ) : (
-                                  <div className="logic-group-condition">
-                                    <div className="logic-human-line logic-group-sentence">
-                                      <span>When</span>
-                                      <select
-                                        value={condition.comparator}
-                                        onChange={(event) => updateLogicCondition(ruleIndex, conditionIndex, "comparator", event.target.value)}
-                                        aria-label="Group comparison"
-                                      >
-                                        <option value="exactly">Exactly</option>
-                                        <option value="at_least">At least</option>
-                                        <option value="at_most">At most</option>
-                                        <option value="all">All</option>
-                                        <option value="any">Any</option>
-                                      </select>
-                                      {!['all', 'any'].includes(condition.comparator) && (
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          max={Math.max(1, condition.field_keys.length)}
-                                          value={condition.count}
-                                          onChange={(event) => updateLogicCondition(ruleIndex, conditionIndex, "count", event.target.value)}
-                                          aria-label="How many signals"
-                                        />
-                                      )}
-                                      <span>of the selected signals are</span>
-                                      <input
-                                        value={condition.expected_value}
-                                        onChange={(event) => updateLogicCondition(ruleIndex, conditionIndex, "expected_value", event.target.value)}
-                                        placeholder="Value"
-                                        aria-label="Expected group value"
-                                      />
-                                    </div>
-
-                                    <details className="logic-field-selector" open>
-                                      <summary>
-                                        Select the signals for this scenario
-                                        <span>{condition.field_keys.length} selected</span>
-                                      </summary>
-                                      <div>
-                                        {availableKeys.length ? availableKeys.map((fieldKey) => (
-                                          <label key={fieldKey}>
-                                            <input
-                                              type="checkbox"
-                                              checked={condition.field_keys.includes(fieldKey)}
-                                              onChange={() => toggleLogicConditionField(ruleIndex, conditionIndex, fieldKey)}
-                                            />
-                                            <span>{fieldKey}</span>
-                                          </label>
-                                        )) : <p>No Data</p>}
-                                      </div>
-                                    </details>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        <button type="button" className="logic-add-condition" onClick={() => addLogicCondition(ruleIndex)}>+ Add another requirement</button>
-                      </section>
-
-                      <section className="logic-builder-block logic-then-block">
-                        <header>
-                          <div>
-                            <span>2 · RESULT</span>
-                            <strong>Tell the dashboard what this situation means</strong>
-                          </div>
-                        </header>
-
-                        <div className="logic-outcome-grid">
-                          <label>
-                            <span>When the situation above is true</span>
-                            <select value={rule.action} onChange={(event) => updateLogicRule(ruleIndex, "action", event.target.value)}>
-                              <option value="safe">Show as Good</option>
-                              <option value="warning">Show as Warning</option>
-                              <option value="danger">Show as Critical</option>
-                              <option value="neutral">Show as Information</option>
-                              <option value="ignore">Ignore the status</option>
-                            </select>
-                          </label>
-
-                          <label>
-                            <span>Which signals should this affect?</span>
-                            <select value={rule.target_mode} onChange={(event) => updateLogicRule(ruleIndex, "target_mode", event.target.value)}>
-                              <option value="conditions">The signals used above</option>
-                              <option value="selected">Let me choose different signals</option>
-                            </select>
-                          </label>
-                        </div>
-
-                        {rule.target_mode === "selected" && (
-                          <details className="logic-field-selector logic-target-selector" open>
-                            <summary>
-                              Select the signals affected by the result
-                              <span>{rule.target_field_keys.length} selected</span>
-                            </summary>
-                            <div>
-                              {availableKeys.length ? availableKeys.map((fieldKey) => (
-                                <label key={fieldKey}>
-                                  <input
-                                    type="checkbox"
-                                    checked={rule.target_field_keys.includes(fieldKey)}
-                                    onChange={() => toggleLogicTargetField(ruleIndex, fieldKey)}
-                                  />
-                                  <span>{fieldKey}</span>
-                                </label>
-                              )) : <p>No Data</p>}
-                            </div>
-                          </details>
-                        )}
-
-                        <div className="logic-else-note">
-                          <b>If this situation is NOT true</b>
-                          <span>Nothing special happens — the normal Data Mapping result is used.</span>
-                        </div>
-                      </section>
-                    </div>
-                  </article>
-                );
-              })}
-
-              {!cloneLogicRules(draft.logic_rules).length && (
-                <div className="logic-rule-empty">
-                  <strong>No special scenarios added</strong>
-                  <span>Your normal Data Mapping will be used for everything. Pick one of the common scenarios above only when you need an exception.</span>
-                </div>
-              )}
-            </div>
-          </section>
         </div>
       </section>
 
@@ -2140,7 +1496,6 @@ function LegacyDashboardApp({
         points: databasePoints.map(machinePointFromDatabase),
         zones: databaseZones.map(machineZoneFromDatabase),
         dataSource: machine.data_source || null,
-        logicRules: cloneLogicRules(machine.logic_rules),
       };
       return result;
     }, {});
@@ -2154,7 +1509,6 @@ function LegacyDashboardApp({
     canvasAspectRatio: FIXED_MACHINE_CANVAS_ASPECT,
     points: [],
     zones: [],
-    logicRules: [],
   };
 
   useEffect(() => {
@@ -2209,10 +1563,6 @@ function LegacyDashboardApp({
 
 
   const payload = machineData?.data || {};
-  const logicOverrides = useMemo(
-    () => evaluateLogicRules(activeMachine.logicRules, payload),
-    [activeMachine.logicRules, payload],
-  );
 
  /* =========================================================
    04 - BUILD LIVE MACHINE ROWS
@@ -2238,7 +1588,7 @@ const machineRows = useMemo(() => {
       || normalizeOpenCloseState(liveGuardOnValue);
     const lockState = normalizeLockState(liveLockStateValue)
       || normalizeLockState(liveHealthyValue);
-    const interpretation = pointInterpretation(point, payload, logicOverrides);
+    const interpretation = pointInterpretation(point, payload);
     const hasLiveData = (point.sourceFields || []).some((field) => payloadValueAtPath(payload, field.source_key) !== undefined)
       || liveOpenCloseValue !== undefined
       || liveLockStateValue !== undefined;
@@ -2253,7 +1603,7 @@ const machineRows = useMemo(() => {
       hasLiveData,
     };
   });
-}, [payload, activeMachine, logicOverrides]);
+}, [payload, activeMachine]);
 
   /* ====================================================   =====
      05 - LEFT PANEL ATTENTION LOGIC

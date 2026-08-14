@@ -1,15 +1,16 @@
 {
-  "name": "machine-dashboard-backend",
+  "name": "mespack-machine-monitoring-backend",
   "version": "1.0.0",
+  "private": true,
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "mqtt": "^5.15.1",
-    "pg": "^8.16.3"
+    "cors": "2.8.5",
+    "dotenv": "16.4.7",
+    "express": "4.21.2",
+    "mqtt": "5.10.4",
+    "pg": "8.13.3"
   }
 }

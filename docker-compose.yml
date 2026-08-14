@@ -1,0 +1,68 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    restart: unless-stopped
+
+    environment:
+      PORT: 5000
+      LOG_LEVEL: ${LOG_LEVEL:-minimal}
+
+      POSTGRES_ENABLED: ${POSTGRES_ENABLED:-true}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_SCHEMA: ${POSTGRES_SCHEMA:-machine_monitoring}
+      POSTGRES_SESSION_LOGS_TABLE: ${POSTGRES_SESSION_LOGS_TABLE:-mespack_session_logs}
+
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+
+      MQTT_BROKER: ${MQTT_BROKER:-}
+      MQTT_USERNAME: ${MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      MQTT_TOPIC: ${MQTT_TOPIC:-sensor/data}
+
+      FACE_API_BASE_URL: ${FACE_API_BASE_URL:-}
+      APP_NAMESPACE: ${APP_NAMESPACE:-machine_dashboard}
+      APP_NAMESPACE_STRICT: ${APP_NAMESPACE_STRICT:-false}
+      FACE_UNREGISTER_PATH: ${FACE_UNREGISTER_PATH:-}
+
+      MACHINE_DATA_STALE_SECONDS: ${MACHINE_DATA_STALE_SECONDS:-300}
+      TZ: Asia/Manila
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:5000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+    networks:
+      - mespack_network
+
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    restart: unless-stopped
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    ports:
+      - "${APP_PORT:-5059}:80"
+
+    networks:
+      - mespack_network
+
+networks:
+  mespack_network:
+    driver: bridge

@@ -3,7 +3,6 @@ const express = require("express");
 const cors = require("cors");
 const mqtt = require("mqtt");
 const crypto = require("crypto");
-const fs = require("fs");
 const path = require("path");
 const { Pool } = require("pg");
 require("dotenv").config({ path: path.join(__dirname, ".env"), override: true, quiet: true });
@@ -58,6 +57,7 @@ const MACHINE_SOURCES_TABLE = process.env.POSTGRES_MACHINE_SOURCES_TABLE || "mac
 const MACHINE_IMAGES_TABLE = process.env.POSTGRES_MACHINE_IMAGES_TABLE || "machine_images";
 const MACHINE_SEGMENTS_TABLE = process.env.POSTGRES_MACHINE_SEGMENTS_TABLE || "machine_segments";
 const MACHINE_POINTS_TABLE = process.env.POSTGRES_MACHINE_POINTS_TABLE || "machine_points";
+const SESSION_LOGS_TABLE = process.env.POSTGRES_SESSION_LOGS_TABLE || "mespack_session_logs";
 const FIXED_MACHINE_CANVAS_ASPECT = 2.1;
 const MAX_MACHINE_IMAGE_BYTES = 12 * 1024 * 1024;
 
@@ -110,6 +110,7 @@ const machineSourcesTable = tableName(MACHINE_SOURCES_TABLE);
 const machineImagesTable = tableName(MACHINE_IMAGES_TABLE);
 const machineSegmentsTable = tableName(MACHINE_SEGMENTS_TABLE);
 const machinePointsTable = tableName(MACHINE_POINTS_TABLE);
+const sessionLogsTable = tableName(SESSION_LOGS_TABLE);
 
 let mqttConnected = false;
 let lastMessageAt = null;
@@ -129,82 +130,6 @@ let latestMachineData = {
 };
 
 latestMachineDataById.set("mespack", latestMachineData);
-
-const DEFAULT_MESPACK_SEGMENTS = [
-  {
-    id: "zone-infeed",
-    name: "Infeed",
-    area: "Infeed Section",
-    polygon_points: [[15, 62], [27, 55], [33, 64], [33, 83], [20, 90], [15, 82]],
-    label_x: 18,
-    label_y: 73,
-    zoom_scale: 2.45,
-    point_ids: [1, 2, 3, 39, 38, 37, 36, 35, 34],
-  },
-  {
-    id: "zone-wrapper",
-    name: "Wrapping",
-    area: "Wrapping Section",
-    polygon_points: [[35, 56], [56, 45], [60, 50], [60, 66], [38, 79], [38, 60]],
-    label_x: 44,
-    label_y: 63,
-    zoom_scale: 2.1,
-    point_ids: [4, 5, 6, 7, 8, 9, 33, 32, 31, 30, 29, 28],
-  },
-  {
-    id: "zone-main",
-    name: "Main Machine",
-    area: "Main Machine",
-    polygon_points: [[56, 45], [74, 34], [77, 40], [77, 57], [60, 65], [60, 50]],
-    label_x: 70,
-    label_y: 55,
-    zoom_scale: 2,
-    point_ids: [10, 11, 12, 13, 27, 26, 25, 24],
-  },
-  {
-    id: "zone-center",
-    name: "Center Guarding",
-    area: "Center Guarding",
-    polygon_points: [[74, 34], [88.3, 26], [93, 30], [93, 48], [77, 57], [77, 40]],
-    label_x: 87,
-    label_y: 49,
-    zoom_scale: 2.15,
-    point_ids: [14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
-  },
-];
-
-function defaultPointName(pointId) {
-  if ([1, 2, 13, 14, 15, 16, 17, 18, 19, 20, 34, 35, 36, 37, 38, 39].includes(pointId)) {
-    return `Unwinder Door ${pointId}`;
-  }
-  if ((pointId >= 3 && pointId <= 12) || pointId === 21) {
-    return `Machine Door ${pointId}`;
-  }
-  return `Door ${pointId}`;
-}
-
-function defaultPointArea(pointId) {
-  if ([1, 2, 13, 14, 15, 16, 17, 18, 19, 20, 34, 35, 36, 37, 38, 39].includes(pointId)) {
-    return "Unwinder Section";
-  }
-  if ((pointId >= 3 && pointId <= 12) || pointId === 21) {
-    return "Main Machine";
-  }
-  return "Machine Guarding";
-}
-
-const DEFAULT_MESPACK_POINTS = Array.from({ length: 39 }, (_, index) => {
-  const pointId = index + 1;
-  const segment = DEFAULT_MESPACK_SEGMENTS.find((item) => item.point_ids.includes(pointId));
-  return {
-    point_id: pointId,
-    name: defaultPointName(pointId),
-    area: defaultPointArea(pointId),
-    segment_id: segment?.id || null,
-    source_key_primary: `SFI_Door${pointId}`,
-    source_key_secondary: `I_Door${pointId}Diagnostic`,
-  };
-});
 
 const DEFAULT_POINT_VALUE_RULES = {
   primary: [
@@ -248,6 +173,77 @@ function normalizePointValueRules(value) {
       color: normalizeColor(fallbackSource.color, "#f59e0b"),
     },
   };
+}
+
+
+function normalizePointSourceFields(point) {
+  const legacyRules = normalizePointValueRules(point?.value_rules);
+  const explicitFields = Array.isArray(point?.source_fields) ? point.source_fields : [];
+
+  const normalizedExplicit = explicitFields
+    .slice(0, 50)
+    .map((field, index) => {
+      const fieldObject = field && typeof field === "object" && !Array.isArray(field)
+        ? field
+        : {};
+      const sourceKey = String(
+        typeof field === "string"
+          ? field
+          : fieldObject.source_key || fieldObject.key || ""
+      ).trim();
+
+      if (!sourceKey) return null;
+
+      const fallbackRules = index === 1 ? legacyRules.secondary : legacyRules.primary;
+      const normalizedRules = normalizePointValueRules({
+        primary: Array.isArray(fieldObject.value_rules)
+          ? fieldObject.value_rules
+          : fallbackRules,
+        secondary: [],
+        fallback: fieldObject.fallback && typeof fieldObject.fallback === "object"
+          ? fieldObject.fallback
+          : legacyRules.fallback,
+      });
+
+      return {
+        id: String(fieldObject.id || `field-${index + 1}`).trim() || `field-${index + 1}`,
+        label: String(fieldObject.label || `Field ${index + 1}`).trim() || `Field ${index + 1}`,
+        source_key: sourceKey,
+        value_rules: normalizedRules.primary,
+        fallback: normalizedRules.fallback,
+      };
+    })
+    .filter(Boolean);
+
+  if (normalizedExplicit.length) {
+    return normalizedExplicit;
+  }
+
+  const legacyFields = [];
+  const primaryKey = String(point?.source_key_primary || "").trim();
+  const secondaryKey = String(point?.source_key_secondary || "").trim();
+
+  if (primaryKey) {
+    legacyFields.push({
+      id: "field-1",
+      label: "Field 1",
+      source_key: primaryKey,
+      value_rules: legacyRules.primary,
+      fallback: legacyRules.fallback,
+    });
+  }
+
+  if (secondaryKey) {
+    legacyFields.push({
+      id: "field-2",
+      label: "Field 2",
+      source_key: secondaryKey,
+      value_rules: legacyRules.secondary,
+      fallback: legacyRules.fallback,
+    });
+  }
+
+  return legacyFields;
 }
 
 function requireAdmin(req, res) {
@@ -703,8 +699,8 @@ function normalizeHighBytePayload(rawPayload) {
     // Backward compatibility:
     // old doorValue true = closed, false = open
     // old diagnosticValue true = healthy/locked, false = fault/unlocked
-    const openClose = normalizeOpenCloseState(rawOpenClose, typeof door.doorValue === "boolean" ? door.doorValue : null) || "CLOSE";
-    const lockState = normalizeLockState(rawLock, typeof door.diagnosticValue === "boolean" ? door.diagnosticValue : null) || "LOCK";
+    const openClose = normalizeOpenCloseState(rawOpenClose, typeof door.doorValue === "boolean" ? door.doorValue : null);
+    const lockState = normalizeLockState(rawLock, typeof door.diagnosticValue === "boolean" ? door.diagnosticValue : null);
 
     const normalizedDoor = {
       ...door,
@@ -713,26 +709,26 @@ function normalizeHighBytePayload(rawPayload) {
       diagnosticTagName: diagnosticTag,
       openClose,
       lockState,
-      doorValue: openClose === "CLOSE",
-      diagnosticValue: lockState === "LOCK",
+      doorValue: openClose === null ? null : openClose === "CLOSE",
+      diagnosticValue: lockState === null ? null : lockState === "LOCK",
     };
 
     normalizedDoors.push(normalizedDoor);
 
     // Keep the old boolean tags so the existing frontend map still works.
-    flatTags[guardTag] = openClose === "CLOSE";
-    flatTags[diagnosticTag] = lockState === "LOCK";
+    flatTags[guardTag] = openClose === null ? null : openClose === "CLOSE";
+    flatTags[diagnosticTag] = lockState === null ? null : lockState === "LOCK";
 
     // Add direct text tags for the new UI wording.
-    flatTags[`${guardTag}_OpenClose`] = openClose;
-    flatTags[`${diagnosticTag}_LockState`] = lockState;
+    flatTags[`${guardTag}_OpenClose`] = openClose || "No Data";
+    flatTags[`${diagnosticTag}_LockState`] = lockState || "No Data";
 
     if (openClose === "OPEN") openDoorCount++;
     if (lockState === "UNLOCK") unlockCount++;
   }
 
   const machineRunning = parseMachineRunningFlag(sourceData);
-  let overallStatus = sourceData.overallStatus || sourceData.status || "READY";
+  let overallStatus = sourceData.overallStatus || sourceData.status || "NO_DATA";
 
   if (unlockCount > 0) {
     overallStatus = "UNLOCKED";
@@ -742,8 +738,8 @@ function normalizeHighBytePayload(rawPayload) {
     overallStatus = "STOPPED";
   } else if (machineRunning === true) {
     overallStatus = "RUNNING";
-  } else {
-    overallStatus = "READY";
+  } else if (!sourceData.overallStatus && !sourceData.status) {
+    overallStatus = "NO_DATA";
   }
 
   const temporaryData = {
@@ -751,8 +747,8 @@ function normalizeHighBytePayload(rawPayload) {
     _name: sourceData._name,
     _model: sourceData._model,
     _timestamp: sourceData._timestamp,
-    area: sourceData.area || "Dressings",
-    machine: sourceData.machine || "Mespack Filler",
+    area: sourceData.area ?? null,
+    machine: sourceData.machine ?? null,
     doors: normalizedDoors,
     overallStatus,
     openDoorCount,
@@ -1434,6 +1430,18 @@ async function ensureTables() {
   await pgPool.query(`ALTER TABLE ${machineReceiptsTable} ADD COLUMN IF NOT EXISTS machine_running BOOLEAN`);
 
   await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS ${sessionLogsTable} (
+      id BIGSERIAL PRIMARY KEY,
+      session_id TEXT NOT NULL UNIQUE,
+      access_role TEXT NOT NULL DEFAULT 'temporary',
+      started_at TIMESTAMPTZ NOT NULL,
+      ended_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      duration_seconds INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pgPool.query(`
     CREATE TABLE IF NOT EXISTS ${machinesTable} (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -1520,7 +1528,8 @@ async function ensureTables() {
       segment_id TEXT,
       source_key_primary TEXT NOT NULL,
       source_key_secondary TEXT,
-      status_mode TEXT NOT NULL DEFAULT 'door_interlock',
+      source_fields JSONB NOT NULL DEFAULT '[]'::jsonb,
+      status_mode TEXT NOT NULL DEFAULT 'mapped_values',
       safe_config JSONB NOT NULL DEFAULT '{"primary":"CLOSE","secondary":"LOCK"}'::jsonb,
       value_rules JSONB NOT NULL DEFAULT '${DEFAULT_POINT_VALUE_RULES_SQL}'::jsonb,
       display_order INTEGER NOT NULL DEFAULT 0,
@@ -1533,94 +1542,12 @@ async function ensureTables() {
 
   await pgPool.query(`
     ALTER TABLE ${machinePointsTable}
+      ADD COLUMN IF NOT EXISTS source_fields JSONB NOT NULL DEFAULT '[]'::jsonb,
       ADD COLUMN IF NOT EXISTS value_rules JSONB NOT NULL DEFAULT '${DEFAULT_POINT_VALUE_RULES_SQL}'::jsonb
   `);
 
-  await pgPool.query(
-    `
-      INSERT INTO ${machinesTable} (id, name, api_url, mqtt_topic, template_id, is_active)
-      VALUES ('mespack', 'Mespack', '/api/data', $1, 'mespack', TRUE)
-      ON CONFLICT (id) DO NOTHING
-    `,
-    [MQTT_TOPIC || null]
-  );
-
-  await pgPool.query(
-    `
-      INSERT INTO ${machineSourcesTable} (
-        machine_id, source_system, transport, source_endpoint, source_topic,
-        source_path, destination_type, destination_key, payload_root, metadata, is_active
-      )
-      VALUES ('mespack', 'HighByte', 'MQTT', $1, $2, NULL, 'Dashboard API', '/api/machines/mespack/data', 'data', $3::jsonb, TRUE)
-      ON CONFLICT (machine_id) DO NOTHING
-    `,
-    [MQTT_BROKER || null, MQTT_TOPIC || null, JSON.stringify({ configured_by: "startup_seed", schema_version: 1 })]
-  );
-
-  for (const [index, segment] of DEFAULT_MESPACK_SEGMENTS.entries()) {
-    await pgPool.query(
-      `
-        INSERT INTO ${machineSegmentsTable} (
-          machine_id, id, name, area, polygon_points, bounding_box,
-          label_x, label_y, zoom_scale, display_order, is_active
-        )
-        VALUES ('mespack', $1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8, $9, TRUE)
-        ON CONFLICT (machine_id, id) DO NOTHING
-      `,
-      [
-        segment.id,
-        segment.name,
-        segment.area,
-        JSON.stringify(segment.polygon_points),
-        JSON.stringify(polygonBoundingBox(segment.polygon_points)),
-        segment.label_x,
-        segment.label_y,
-        segment.zoom_scale,
-        index,
-      ]
-    );
-  }
-
-  for (const point of DEFAULT_MESPACK_POINTS) {
-    await pgPool.query(
-      `
-        INSERT INTO ${machinePointsTable} (
-          machine_id, point_id, name, area, segment_id, source_key_primary,
-          source_key_secondary, status_mode, display_order, is_active
-        )
-        VALUES ('mespack', $1, $2, $3, $4, $5, $6, 'door_interlock', $1, TRUE)
-        ON CONFLICT (machine_id, point_id) DO NOTHING
-      `,
-      [
-        point.point_id,
-        point.name,
-        point.area,
-        point.segment_id,
-        point.source_key_primary,
-        point.source_key_secondary,
-      ]
-    );
-  }
-
-  const defaultImagePath = path.join(__dirname, "assets", "mespack-machine.png");
-  if (fs.existsSync(defaultImagePath)) {
-    const imageBytes = fs.readFileSync(defaultImagePath);
-    await pgPool.query(
-      `
-        INSERT INTO ${machineImagesTable} (
-          machine_id, image_base64, mime_type, original_width, original_height,
-          canvas_aspect_ratio, sha256
-        )
-        VALUES ('mespack', $1, 'image/png', 1919, 917, $2, $3)
-        ON CONFLICT (machine_id) DO NOTHING
-      `,
-      [
-        imageBytes.toString("base64"),
-        FIXED_MACHINE_CANVAS_ASPECT,
-        crypto.createHash("sha256").update(imageBytes).digest("hex"),
-      ]
-    );
-  }
+  // No startup sample machine, image, segment, or point data.
+  // Real configuration is created through Admin. Empty systems remain No Data.
 
   // Safe migrations for old test tables.
   const peopleColumns = [
@@ -1657,6 +1584,10 @@ async function ensureTables() {
   await pgPool.query(`
     CREATE INDEX IF NOT EXISTS idx_machine_receipts_window
       ON ${machineReceiptsTable} (machine_id, last_received_at)
+  `);
+  await pgPool.query(`
+    CREATE INDEX IF NOT EXISTS idx_mespack_session_logs_ended
+      ON ${sessionLogsTable} (ended_at DESC)
   `);
   await pgPool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_confirmations_registration_once
@@ -1702,7 +1633,7 @@ async function loadMachineConfigurations({ includeInactive = true } = {}) {
     pgPool.query(
       `
         SELECT machine_id, point_id, name, area, segment_id, source_key_primary,
-               source_key_secondary, status_mode, safe_config, value_rules, display_order, is_active
+               source_key_secondary, source_fields, status_mode, safe_config, value_rules, display_order, is_active
         FROM ${machinePointsTable}
         WHERE machine_id = ANY($1::text[])
         ORDER BY machine_id, display_order, point_id
@@ -1726,7 +1657,12 @@ async function loadMachineConfigurations({ includeInactive = true } = {}) {
           .filter((point) => point.machine_id === machine.id && point.segment_id === row.id)
           .map((point) => point.point_id),
       }));
-    const machinePoints = points.rows.filter((row) => row.machine_id === machine.id);
+    const machinePoints = points.rows
+      .filter((row) => row.machine_id === machine.id)
+      .map((row) => ({
+        ...row,
+        source_fields: normalizePointSourceFields(row),
+      }));
     const image = imageByMachine.get(machine.id) || null;
     const source = sourceByMachine.get(machine.id) || null;
 
@@ -1984,25 +1920,35 @@ async function saveMachineConfiguration(machineId, body) {
       for (const [index, rawPoint] of body.points.entries()) {
         const pointId = Number(rawPoint.point_id);
         const pointName = String(rawPoint.name || "").trim();
-        const primaryKey = String(rawPoint.source_key_primary || "").trim();
+
+        const sourceFields = normalizePointSourceFields(rawPoint);
+        const primaryKey = sourceFields[0]?.source_key || "";
+        const secondaryKey = sourceFields[1]?.source_key || null;
+
         if (!Number.isInteger(pointId) || !pointName || !primaryKey) {
-          const invalid = new Error(`Point mapping ${index + 1} needs an integer ID, name, and HighByte source key.`);
+          const invalid = new Error(`Point mapping ${index + 1} needs an integer ID, name, and at least one data field.`);
           invalid.statusCode = 400;
           throw invalid;
         }
+
         await client.query(
           `
             INSERT INTO ${machinePointsTable} (
               machine_id, point_id, name, area, segment_id, source_key_primary,
-              source_key_secondary, status_mode, safe_config, value_rules, display_order, is_active, updated_at
+              source_key_secondary, source_fields, status_mode, safe_config,
+              value_rules, display_order, is_active, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12, CURRENT_TIMESTAMP)
+            VALUES (
+              $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9,
+              $10::jsonb, $11::jsonb, $12, $13, CURRENT_TIMESTAMP
+            )
             ON CONFLICT (machine_id, point_id) DO UPDATE SET
               name = EXCLUDED.name,
               area = EXCLUDED.area,
               segment_id = EXCLUDED.segment_id,
               source_key_primary = EXCLUDED.source_key_primary,
               source_key_secondary = EXCLUDED.source_key_secondary,
+              source_fields = EXCLUDED.source_fields,
               status_mode = EXCLUDED.status_mode,
               safe_config = EXCLUDED.safe_config,
               value_rules = EXCLUDED.value_rules,
@@ -2017,8 +1963,9 @@ async function saveMachineConfiguration(machineId, body) {
             String(rawPoint.area || "").trim() || null,
             rawPoint.segment_id ? normalizeMachineId(rawPoint.segment_id) : null,
             primaryKey,
-            String(rawPoint.source_key_secondary || "").trim() || null,
-            String(rawPoint.status_mode || "door_interlock").trim(),
+            secondaryKey,
+            JSON.stringify(sourceFields),
+            String(rawPoint.status_mode || "mapped_values").trim(),
             JSON.stringify(rawPoint.safe_config && typeof rawPoint.safe_config === "object"
               ? rawPoint.safe_config
               : { primary: "CLOSE", secondary: "LOCK" }),
@@ -2170,6 +2117,63 @@ app.get("/health", (req, res) => {
     mqttConnected,
     lastMessageAt: lastMessageAt || "No data",
   });
+});
+
+// One database row per completed browser session. No click/action logging.
+app.post("/api/session/end", async (req, res) => {
+  try {
+    const sessionId = String(req.body?.session_id || "").trim().slice(0, 160);
+    if (!sessionId) {
+      return res.status(400).json({ ok: false, error: "session_id is required." });
+    }
+
+    const roleValue = String(req.body?.access_role || "temporary").trim().toLowerCase();
+    const accessRole = roleValue === "admin" ? "admin" : "temporary";
+    const endedAt = new Date();
+    const suppliedStartedAt = new Date(req.body?.started_at || endedAt.toISOString());
+    const startedAt = Number.isNaN(suppliedStartedAt.getTime()) || suppliedStartedAt > endedAt
+      ? endedAt
+      : suppliedStartedAt;
+    const durationSeconds = Math.max(0, Math.min(7 * 24 * 60 * 60, Math.floor((endedAt - startedAt) / 1000)));
+
+    await pgPool.query(
+      `
+        INSERT INTO ${sessionLogsTable} (
+          session_id, access_role, started_at, ended_at, duration_seconds
+        )
+        VALUES ($1, $2, $3::timestamptz, $4::timestamptz, $5)
+        ON CONFLICT (session_id) DO NOTHING
+      `,
+      [sessionId, accessRole, startedAt.toISOString(), endedAt.toISOString(), durationSeconds]
+    );
+
+    res.status(204).end();
+  } catch (err) {
+    logError("Session log save failed", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Optional admin-only database view for the latest session rows.
+app.post("/api/admin/session-logs", async (req, res) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+    const requestedLimit = Number(req.body?.limit || 200);
+    const limit = Math.max(1, Math.min(500, Number.isFinite(requestedLimit) ? Math.floor(requestedLimit) : 200));
+    const result = await pgPool.query(
+      `
+        SELECT id, session_id, access_role, started_at, ended_at, duration_seconds
+        FROM ${sessionLogsTable}
+        ORDER BY ended_at DESC
+        LIMIT $1
+      `,
+      [limit]
+    );
+    res.json({ ok: true, logs: result.rows });
+  } catch (err) {
+    logError("Session log read failed", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 app.post("/api/auth/admin", (req, res) => {
@@ -2358,7 +2362,7 @@ app.get("/api/machines/:id/available-data", async (req, res) => {
 
     const configuredResult = await pgPool.query(
       `
-        SELECT point_id, name, source_key_primary, source_key_secondary
+        SELECT point_id, name, source_key_primary, source_key_secondary, source_fields
         FROM ${machinePointsTable}
         WHERE machine_id = $1 AND is_active = TRUE
         ORDER BY display_order, point_id
@@ -2373,7 +2377,13 @@ app.get("/api/machines/:id/available-data", async (req, res) => {
     }
 
     for (const point of configuredResult.rows) {
-      for (const key of [point.source_key_primary, point.source_key_secondary].filter(Boolean)) {
+      const configuredKeys = normalizePointSourceFields(point)
+        .map((field) => field.source_key)
+        .filter(Boolean);
+
+      for (const keyValue of configuredKeys) {
+        const key = String(keyValue || "").trim();
+        if (!key) continue;
         const existing = fieldsByKey.get(key) || { key, type: "configured", sample: null, live: false };
         existing.configured = true;
         existing.point_id = point.point_id;
@@ -2787,6 +2797,7 @@ async function startServer() {
       logDebug(`PostgreSQL people table: ${peopleTable}`);
       logInfo(`✅ PostgreSQL: ${peopleTable}, ${confirmationsTable}, ${machinesTable}`);
       logInfo(`✅ Machine configuration tables: ${machineSourcesTable}, ${machineImagesTable}, ${machineSegmentsTable}, ${machinePointsTable}`);
+      logInfo(`✅ Session logs: ${sessionLogsTable}`);
   });
 }
 

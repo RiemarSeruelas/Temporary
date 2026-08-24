@@ -219,5 +219,3 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_confirmations_registration_once
 -- source_fields stores any number of MQTT fields per point. The existing
 -- primary/secondary columns remain for backward compatibility.
 
--- Facial recognition and date-generated PINs are no longer used by the application.
--- Existing legacy face_people / face_* columns may remain in an upgraded database, but the runtime does not read or write them.

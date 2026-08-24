@@ -1979,6 +1979,7 @@ const machineRows = useMemo(() => {
       {confirmationModalOpen && (
         <ConfirmationModal
           machine={activeMachine}
+          machines={machineList}
           theme={theme}
           onClose={() => setConfirmationModalOpen(false)}
           onConfirmed={(message) => showConfirmationToast(message)}

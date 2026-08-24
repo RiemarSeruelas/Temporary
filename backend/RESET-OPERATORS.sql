@@ -1,34 +1,36 @@
--- Reset operator registrations and confirmation history.
--- Run this against the database containing the machine_monitoring schema.
--- Confirmation rows are deleted FIRST so older installations with a
--- registration foreign key do not block deletion of the registrations.
+-- Run this in the Query Tool connected to the correct DATABASE.
+-- PostgreSQL uses schema.table, not database.schema.table.
 
+-- If a previous query failed and pgAdmin says the current transaction is aborted:
+ROLLBACK;
+
+-- Optional safety check. This should be the database that contains machine_monitoring.
+SELECT current_database();
+
+-- Complete operator + confirmation reset.
+-- Confirmation history is removed first because it may reference registrations.
 BEGIN;
 
 DELETE FROM machine_monitoring.machine_check_confirmations;
 DELETE FROM machine_monitoring.operator_shift_registrations;
 
--- Reset generated IDs when the standard SERIAL/BIGSERIAL sequences exist.
-DO $$
-DECLARE
-  seq_name text;
-BEGIN
-  seq_name := pg_get_serial_sequence('machine_monitoring.machine_check_confirmations', 'id');
-  IF seq_name IS NOT NULL THEN
-    EXECUTE format('ALTER SEQUENCE %s RESTART WITH 1', seq_name);
-  END IF;
-
-  seq_name := pg_get_serial_sequence('machine_monitoring.operator_shift_registrations', 'id');
-  IF seq_name IS NOT NULL THEN
-    EXECUTE format('ALTER SEQUENCE %s RESTART WITH 1', seq_name);
-  END IF;
-END $$;
-
 COMMIT;
 
--- Verify:
-SELECT COUNT(*) AS confirmations
-FROM machine_monitoring.machine_check_confirmations;
+-- Reset ID sequences if the tables use SERIAL/BIGSERIAL.
+SELECT setval(
+  pg_get_serial_sequence('machine_monitoring.machine_check_confirmations', 'id'),
+  1,
+  false
+)
+WHERE pg_get_serial_sequence('machine_monitoring.machine_check_confirmations', 'id') IS NOT NULL;
 
-SELECT COUNT(*) AS registrations
-FROM machine_monitoring.operator_shift_registrations;
+SELECT setval(
+  pg_get_serial_sequence('machine_monitoring.operator_shift_registrations', 'id'),
+  1,
+  false
+)
+WHERE pg_get_serial_sequence('machine_monitoring.operator_shift_registrations', 'id') IS NOT NULL;
+
+-- Verify.
+SELECT COUNT(*) AS confirmations FROM machine_monitoring.machine_check_confirmations;
+SELECT COUNT(*) AS registrations FROM machine_monitoring.operator_shift_registrations;

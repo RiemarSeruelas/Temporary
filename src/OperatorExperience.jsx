@@ -57,15 +57,29 @@ function PinInput({ value, onChange, disabled = false, autoFocus = false, ariaLa
   );
 }
 
-export function ConfirmationModal({ machine, theme, onClose, onConfirmed }) {
+export function ConfirmationModal({ machine, machines = [], theme, onClose, onConfirmed }) {
+  const machineOptions = (machines || []).filter((item) => item?.is_active !== false && item?.id);
+  const initialMachineId = machineOptions.some((item) => item.id === machine?.id)
+    ? machine.id
+    : machineOptions[0]?.id || machine?.id || "";
+  const [selectedMachineId, setSelectedMachineId] = useState(initialMachineId);
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const selectedMachine = machineOptions.find((item) => item.id === selectedMachineId)
+    || machine
+    || machineOptions[0]
+    || null;
+
   useEffect(() => {
+    const nextMachineId = machineOptions.some((item) => item.id === machine?.id)
+      ? machine.id
+      : machineOptions[0]?.id || machine?.id || "";
+    setSelectedMachineId(nextMachineId);
     setPin("");
     setError("");
-  }, [machine.id]);
+  }, [machine?.id, machines]);
 
   async function confirmOperator(event) {
     event?.preventDefault?.();
@@ -78,9 +92,14 @@ export function ConfirmationModal({ machine, theme, onClose, onConfirmed }) {
     setLoading(true);
     setError("");
     try {
+      if (!selectedMachine?.id) {
+        setError("Select a machine.");
+        return;
+      }
+
       const data = await postJson("/api/machine-check/confirm", {
-        machine: machine.id,
-        machine_name: machine.name,
+        machine: selectedMachine.id,
+        machine_name: selectedMachine.name,
         pin,
       });
 
@@ -112,10 +131,25 @@ export function ConfirmationModal({ machine, theme, onClose, onConfirmed }) {
           <span className="confirmation-pin-kicker">Machine confirmation</span>
           <h2>Enter your 6-digit PIN</h2>
 
-          <div className="confirmation-pin-machine">
+          <label className="confirmation-pin-machine confirmation-pin-machine-select">
             <small>Machine</small>
-            <strong>{safeText(machine.name)}</strong>
-          </div>
+            <select
+              value={selectedMachineId}
+              onChange={(event) => {
+                setSelectedMachineId(event.target.value);
+                setPin("");
+                setError("");
+              }}
+              disabled={loading || !machineOptions.length}
+              aria-label="Machine to confirm"
+            >
+              {machineOptions.length ? machineOptions.map((item) => (
+                <option value={item.id} key={item.id}>{safeText(item.name)}</option>
+              )) : (
+                <option value={machine?.id || ""}>{safeText(machine?.name || "No Data")}</option>
+              )}
+            </select>
+          </label>
 
           <PinInput
             value={pin}

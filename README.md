@@ -26,8 +26,8 @@ Machine configuration, operator records, confirmations, and session logs are sto
 - Configurable display labels, condition, and color
 - Automatic **No Data** display when real values are unavailable
 - Operator registration by shift
-- Face registration and face recognition
-- Machine confirmation workflow
+- 6-digit PIN registration and confirmation
+- Shift-based machine confirmation workflow
 - Confirmation monitoring and history
 - PostgreSQL machine configuration storage
 - PostgreSQL operator and confirmation records
@@ -43,8 +43,8 @@ Machine configuration, operator records, confirmations, and session logs are sto
 | **Machine Monitoring** | View the configured machine, machine segments, and current live status. |
 | **Machine Set Up** | Configure the machine connection, machine image, segments, and Data Mapping. |
 | **Data Mapping** | Assign incoming MQTT / HighByte fields to machine points and define what each received value means. |
-| **Operator** | Register the operator assigned to a machine and shift. |
-| **Machine Confirmation** | Confirm that the assigned operator has checked the machine during the required confirmation window. |
+| **Operator** | Register the operator assigned to a machine and shift using the 6-digit PIN. |
+| **Machine Confirmation** | Confirm the registered operator for the current shift using the 6-digit PIN. |
 | **Operator Admin** | Review operator registration and confirmation records. |
 | **Session Logs** | Store one application usage record when a browser session ends. |
 
@@ -184,29 +184,27 @@ Machine configuration is stored in PostgreSQL and should remain available after 
 
 ### 5. Register an Operator
 
-Open the Operator section during the applicable registration window.
+Open the Operator section and register the operator assigned to the machine and shift.
 
-The operator registration process includes:
+The registration process includes:
 
 - Operator name
 - Machine
 - Shift
-- Face registration
+- 6-digit PIN chosen during registration
 
-When camera access is supported, the system can use the device camera.
-
-When camera access is unavailable, the interface can use image upload where supported by the current frontend workflow.
+Registration can be completed at any time. The PIN is stored as a one-way hash and is not stored as plain text.
 
 ### 6. Confirm a Machine Check
 
-During the required confirmation window, the assigned operator can complete machine confirmation.
+During the active 4-hour confirmation window:
 
-The system:
+1. Select **Confirm check**.
+2. Enter the same 6-digit PIN used during registration.
+3. The backend identifies the operator currently registered to that machine and shift.
+4. A matching PIN records the confirmation.
 
-1. Detects the registered face.
-2. Confirms that the person is registered to the selected machine and current shift.
-3. Checks whether machine confirmation is required.
-4. Stores the completed confirmation in PostgreSQL.
+Confirmation remains shift-based and is only allowed during the configured 4-hour confirmation window.
 
 ### 7. Review Operator Records
 
@@ -250,6 +248,12 @@ The application uses Manila plant time.
 
 ## Important Rules
 
+- Registration can be completed at any time.
+- Each registration uses a 6-digit PIN chosen by the operator / registrant.
+- The same PIN is required for confirmation.
+- Confirmation is allowed only during the configured 4-hour window for the current shift.
+- The PIN is stored as a one-way hash, not as plain text.
+
 - PostgreSQL is the source of truth for machine configuration.
 - Do not rely on placeholder or default machine data.
 - Missing machine values should display **No Data**.
@@ -276,7 +280,6 @@ Main tables include:
 
 ```text
 machine_monitoring
-├── face_people
 ├── machine_check_confirmations
 ├── operator_shift_registrations
 ├── machine_configurations
@@ -310,15 +313,15 @@ The original primary and secondary source-key columns are retained for backward 
 
 ### Operator and Confirmation Data
 
-`face_people` stores the application mapping for registered operators.
-
 `operator_shift_registrations` stores the operator assigned to a machine and shift.
 
 `machine_check_confirmations` stores completed machine confirmations.
 
-`machine_data_receipts` stores machine data-receipt activity used by the confirmation workflow.
+`machine_data_receipts` stores machine data-receipt activity used by monitoring and reporting.
 
-### Session Logs
+Operator identity is not verified by camera or facial recognition. Registration and confirmation use the 6-digit shift-PIN.
+
+### Session Logs### Session Logs
 
 `mespack_session_logs` stores one row for completed application sessions.
 
@@ -373,7 +376,6 @@ This section is for the person responsible for hosting the Machine Monitoring Da
 - Docker Desktop or Docker Engine
 - Access to the configured PostgreSQL server
 - Access to the MQTT broker / HighByte output
-- Access to the Face Recognition API if operator face functions are enabled
 - Complete project folder
 - Configured `.env`
 - Access to the approved plant network
@@ -391,7 +393,6 @@ Example:
 ```env
 APP_PORT=5054
 
-POSTGRES_ENABLED=true
 POSTGRES_HOST=your_database_host
 POSTGRES_PORT=5432
 POSTGRES_DB=your_database_name
@@ -407,10 +408,6 @@ MQTT_USERNAME=your_mqtt_username
 MQTT_PASSWORD=your_mqtt_password
 MQTT_TOPIC=sensor/data
 
-FACE_API_BASE_URL=http://your_face_api_host:5005
-APP_NAMESPACE=machine_dashboard
-APP_NAMESPACE_STRICT=false
-FACE_UNREGISTER_PATH=
 
 LOG_LEVEL=minimal
 MACHINE_DATA_STALE_SECONDS=300
@@ -679,15 +676,17 @@ ORDER BY point_id;
 
 The `source_fields` column should contain the configured fields for each monitoring point.
 
-### Face Recognition Does Not Work
+### PIN Registration or Confirmation Does Not Work
 
-Confirm:
+Confirm that the PIN contains exactly six digits.
 
-- `FACE_API_BASE_URL` is correct
-- The Face API is reachable from the Docker host
-- The operator has been registered
-- Camera permissions are available where required
-- The current operator / machine / shift registration is valid
+Check that:
+
+- The operator registration was saved successfully.
+- Confirmation is being attempted during the current shift's 4-hour confirmation window.
+- The confirmation PIN matches the PIN used during registration.
+- An operator is registered for the selected machine and current shift before confirmation.
+- The backend and PostgreSQL connection are healthy.
 
 Check:
 
@@ -859,10 +858,10 @@ README.md
 - Do not publish PostgreSQL credentials.
 - Do not publish MQTT credentials.
 - Do not publish the Admin password.
-- Do not expose the Face API to untrusted networks.
 - Do not expose PostgreSQL directly to untrusted networks.
 - Keep the application on the approved internal plant network.
 - Restrict Admin access to authorized personnel.
+- The PIN is a workflow confirmation mechanism, not strong identity authentication.
 - Change shared credentials according to the site's security policy.
 - Use the Admin interface rather than manually changing production configuration when possible.
 
@@ -883,7 +882,8 @@ Before production / UAT deployment, confirm:
 - Save Configuration persists after refresh
 - Flexible fields persist after refresh
 - Operator registration works
-- Face recognition works
+- 6-digit PIN registration works during each 4-hour shift window
+- PIN confirmation records the operator registered for the current machine and shift
 - Machine confirmation works
 - Session logs are created
 - Another permitted computer can open port `5054`

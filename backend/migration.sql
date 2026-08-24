@@ -3,36 +3,26 @@
 
 CREATE SCHEMA IF NOT EXISTS machine_monitoring;
 
-CREATE TABLE IF NOT EXISTS machine_monitoring.face_people (
-  id SERIAL PRIMARY KEY,
-  person_name TEXT NOT NULL,
-  employee_id TEXT,
-  department TEXT,
-  role TEXT DEFAULT 'operator',
-  machine TEXT,
-  machine_name TEXT,
-  shift_code TEXT,
-  face_api_id INTEGER,
-  face_api_object_id TEXT,
-  face_img_name TEXT,
-  face_app_namespace TEXT,
-  face_hash TEXT,
-  embedding_hash TEXT,
-  is_active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE IF NOT EXISTS machine_monitoring.machine_check_confirmations (
   id SERIAL PRIMARY KEY,
   person_id INTEGER,
   person_name TEXT NOT NULL,
+  employee_id TEXT,
+  department TEXT,
+  role TEXT,
   machine TEXT NOT NULL,
+  machine_name TEXT,
+  shift_code TEXT,
+  shift_date DATE,
+  verification_window_start TIMESTAMP,
+  verification_window_end TIMESTAMP,
+  machine_required BOOLEAN DEFAULT TRUE,
   confirmation_status TEXT DEFAULT 'confirmed',
+  registration_id BIGINT,
+  machine_activity_reason TEXT,
+  verification_method TEXT NOT NULL DEFAULT 'registration_pin',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
-ALTER TABLE machine_monitoring.face_people
-  ADD COLUMN IF NOT EXISTS shift_code TEXT;
 
 ALTER TABLE machine_monitoring.machine_check_confirmations
   ADD COLUMN IF NOT EXISTS person_id INTEGER,
@@ -45,17 +35,13 @@ ALTER TABLE machine_monitoring.machine_check_confirmations
   ADD COLUMN IF NOT EXISTS verification_window_start TIMESTAMP,
   ADD COLUMN IF NOT EXISTS verification_window_end TIMESTAMP,
   ADD COLUMN IF NOT EXISTS machine_required BOOLEAN DEFAULT TRUE,
-  ADD COLUMN IF NOT EXISTS face_api_id INTEGER,
-  ADD COLUMN IF NOT EXISTS face_api_object_id TEXT,
-  ADD COLUMN IF NOT EXISTS face_img_name TEXT,
-  ADD COLUMN IF NOT EXISTS face_distance DOUBLE PRECISION,
-  ADD COLUMN IF NOT EXISTS face_threshold DOUBLE PRECISION,
-  ADD COLUMN IF NOT EXISTS face_confidence DOUBLE PRECISION,
-  ADD COLUMN IF NOT EXISTS face_app_namespace TEXT,
-  ADD COLUMN IF NOT EXISTS face_hash TEXT,
-  ADD COLUMN IF NOT EXISTS embedding_hash TEXT,
+  ADD COLUMN IF NOT EXISTS confirmation_status TEXT DEFAULT 'confirmed',
   ADD COLUMN IF NOT EXISTS registration_id BIGINT,
-  ADD COLUMN IF NOT EXISTS machine_activity_reason TEXT;
+  ADD COLUMN IF NOT EXISTS machine_activity_reason TEXT,
+  ADD COLUMN IF NOT EXISTS verification_method TEXT NOT NULL DEFAULT 'registration_pin';
+
+ALTER TABLE machine_monitoring.machine_check_confirmations
+  ALTER COLUMN verification_method SET DEFAULT 'registration_pin';
 
 CREATE TABLE IF NOT EXISTS machine_monitoring.machine_configurations (
   id TEXT PRIMARY KEY,
@@ -80,7 +66,7 @@ ALTER TABLE machine_monitoring.machine_configurations
 
 CREATE TABLE IF NOT EXISTS machine_monitoring.operator_shift_registrations (
   id BIGSERIAL PRIMARY KEY,
-  person_id INTEGER NOT NULL REFERENCES machine_monitoring.face_people(id),
+  person_id INTEGER,
   person_name TEXT NOT NULL,
   machine_id TEXT NOT NULL,
   machine_name TEXT NOT NULL,
@@ -88,11 +74,22 @@ CREATE TABLE IF NOT EXISTS machine_monitoring.operator_shift_registrations (
   shift_date DATE NOT NULL,
   verification_window_start TIMESTAMPTZ NOT NULL,
   verification_window_end TIMESTAMPTZ NOT NULL,
+  pin_hash TEXT,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (machine_id, shift_date, shift_code)
 );
+
+-- Upgrade old face-based registrations safely.
+ALTER TABLE machine_monitoring.operator_shift_registrations
+  DROP CONSTRAINT IF EXISTS operator_shift_registrations_person_id_fkey;
+
+ALTER TABLE machine_monitoring.operator_shift_registrations
+  ALTER COLUMN person_id DROP NOT NULL;
+
+ALTER TABLE machine_monitoring.operator_shift_registrations
+  ADD COLUMN IF NOT EXISTS pin_hash TEXT;
 
 CREATE TABLE IF NOT EXISTS machine_monitoring.machine_data_receipts (
   machine_id TEXT NOT NULL,
@@ -218,6 +215,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_confirmations_registration_once
 -- The dashboard now displays No Data until real configuration is saved through Admin.
 
 
--- Flexible field mapping (August 14, 2026)
+-- Flexible field mapping + operator PIN confirmation
 -- source_fields stores any number of MQTT fields per point. The existing
 -- primary/secondary columns remain for backward compatibility.
+
+-- Facial recognition and date-generated PINs are no longer used by the application.
+-- Existing legacy face_people / face_* columns may remain in an upgraded database, but the runtime does not read or write them.

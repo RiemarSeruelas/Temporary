@@ -42,13 +42,9 @@ const MQTT_USERNAME = process.env.MQTT_USERNAME;
 const MQTT_PASSWORD = process.env.MQTT_PASSWORD;
 const MQTT_TOPIC = process.env.MQTT_TOPIC || "sensor/data";
 
-const FACE_API_BASE_URL = String(process.env.FACE_API_BASE_URL || process.env.AI_FACE_BASE_URL || "").replace(/\/$/, "");
-const APP_NAMESPACE = process.env.APP_NAMESPACE || "machine_dashboard";
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "").trim();
-const FACE_UNREGISTER_PATH = process.env.FACE_UNREGISTER_PATH || "";
 
 const POSTGRES_SCHEMA = process.env.POSTGRES_SCHEMA || "machine_monitoring";
-const PEOPLE_TABLE = process.env.POSTGRES_PEOPLE_TABLE || "face_people";
 const CONFIRMATIONS_TABLE = process.env.POSTGRES_CONFIRMATIONS_TABLE || "machine_check_confirmations";
 const OPERATOR_REGISTRATIONS_TABLE = process.env.POSTGRES_OPERATOR_REGISTRATIONS_TABLE || "operator_shift_registrations";
 const MACHINE_RECEIPTS_TABLE = process.env.POSTGRES_MACHINE_RECEIPTS_TABLE || "machine_data_receipts";
@@ -101,7 +97,6 @@ function tableName(name) {
   return `"${safeSchema}"."${safeName}"`;
 }
 
-const peopleTable = tableName(PEOPLE_TABLE);
 const confirmationsTable = tableName(CONFIRMATIONS_TABLE);
 const operatorRegistrationsTable = tableName(OPERATOR_REGISTRATIONS_TABLE);
 const machineReceiptsTable = tableName(MACHINE_RECEIPTS_TABLE);
@@ -118,8 +113,6 @@ let lastRawPayload = null;
 let mqttClient = null;
 let sourceTopicIndex = new Map();
 const latestMachineDataById = new Map();
-const faceDetectionSessions = new Map();
-const FACE_DETECTION_TTL_MS = 2 * 60 * 1000;
 
 let latestMachineData = {
   status: "WAITING",
@@ -775,241 +768,60 @@ function normalizeHighBytePayload(rawPayload) {
   };
 }
 
-async function faceApiPost(path, body) {
-  if (!FACE_API_BASE_URL) {
-    const error = new Error("Face recognition is not configured.");
-    error.statusCode = 503;
+
+function normalizePin(value) {
+  return String(value || "").replace(/\D/g, "").slice(0, 6);
+}
+
+function requireSixDigitPin(value) {
+  const pin = normalizePin(value);
+  if (pin.length !== 6) {
+    const error = new Error("Enter a 6-digit PIN.");
+    error.statusCode = 400;
     throw error;
   }
-  const url = `${FACE_API_BASE_URL}${path}`;
+  return pin;
+}
 
-  async function readResponse(response) {
-    const text = await response.text();
-    try {
-      return JSON.parse(text);
-    } catch {
-      return { raw: text };
-    }
+function operatorPinHash(pin) {
+  return crypto
+    .createHash("sha256")
+    .update(`machine-monitoring-pin:${pin}`)
+    .digest("hex");
+}
+
+function verifyRegistrationPin(pin, registration) {
+  const normalizedPin = requireSixDigitPin(pin);
+  if (!registration?.pin_hash) {
+    const error = new Error("This registration has no PIN. Register the operator again.");
+    error.statusCode = 409;
+    throw error;
   }
-
-  // First try JSON. This is what the Face API normally accepts.
-  let response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  let data = await readResponse(response);
-
-  // Some Face API builds are picky and only read form data for /register.
-  // If the server says img is missing, retry once as FormData.
-  const errorText = String(data?.error || data?.message || data?.detail || data?.raw || "").toLowerCase();
-  if (!response.ok && errorText.includes("img") && errorText.includes("not found")) {
-    const form = new FormData();
-    for (const [key, value] of Object.entries(body || {})) {
-      if (value === undefined || value === null) continue;
-      form.append(key, typeof value === "boolean" ? String(value) : value);
-    }
-
-    response = await fetch(url, {
-      method: "POST",
-      body: form,
-    });
-
-    data = await readResponse(response);
+  if (operatorPinHash(normalizedPin) !== String(registration.pin_hash)) {
+    const error = new Error("Invalid PIN.");
+    error.statusCode = 403;
+    throw error;
   }
-
-  if (!response.ok) {
-    const keys = Object.keys(body || {}).join(", ");
-    throw new Error(data.error || data.message || data.detail || data.raw || `Face API ${path} failed: ${response.status}. Sent keys: ${keys}`);
-  }
-
-  return data;
+  return normalizedPin;
 }
 
-function firstFaceCandidate(apiResponse) {
-  const firstGroup = apiResponse?.results?.[0];
-  if (!Array.isArray(firstGroup) || firstGroup.length === 0) return null;
-
-  const validCandidates = firstGroup
-    .filter((candidate) => candidate && typeof candidate === "object")
-    .map((candidate) => ({
-      ...candidate,
-      distanceNumber: Number(candidate.distance),
-      thresholdNumber: Number(candidate.threshold),
-    }))
-    .filter((candidate) => {
-      if (!Number.isFinite(candidate.distanceNumber)) return false;
-      if (!Number.isFinite(candidate.thresholdNumber)) return true;
-      return candidate.distanceNumber <= candidate.thresholdNumber;
-    })
-    .sort((a, b) => a.distanceNumber - b.distanceNumber);
-
-  const candidate = validCandidates[0];
-  if (!candidate) return null;
-
-  return {
-    raw: candidate,
-    face_api_id: candidate.id ?? candidate.sequence,
-    face_api_object_id: candidate._id,
-    face_img_name: candidate.img_name,
-    distance: candidate.distance,
-    threshold: candidate.threshold,
-    confidence: candidate.confidence,
-    app_namespace: candidate.app_namespace,
-    is_active: candidate.is_active,
-    face_hash: candidate.face_hash,
-    embedding_hash: candidate.embedding_hash,
-  };
-}
-
-function normalizeImageInput(image) {
-  if (!image || typeof image !== "string") return "";
-  const trimmed = image.trim();
-  if (!trimmed) return "";
-  if (trimmed.startsWith("data:image/")) return trimmed;
-  return `data:image/jpeg;base64,${trimmed}`;
-}
-
-function facePayload(image, extra = {}) {
-  const normalizedImage = normalizeImageInput(image);
-
-  return {
-    model_name: "SFace",
-    detector_backend: "yunet",
-    align: true,
-    l2_normalize: true,
-    ...extra,
-
-    // Keep img at the end so no extra field can accidentally overwrite it.
-    img: normalizedImage,
-  };
-}
-
-function searchPayload(image) {
-  return facePayload(image, {
-    distance_metric: "cosine",
-    search_method: "exact",
-  });
-}
-
-
-async function upsertOperatorFace({ person_name, employee_id, department, role, machine, machine_name, shift_code, candidate }) {
-  const faceApiId = candidate?.face_api_id ?? null;
-  const faceImgName = candidate?.face_img_name ?? null;
-
-  if (!faceApiId && !faceImgName) {
-    throw new Error("Face registered, but Face API did not return an id or img_name after verification search.");
-  }
-
-  const existing = await pgPool.query(
-    `
-      SELECT id
-      FROM ${peopleTable}
-      WHERE ($1::integer IS NOT NULL AND face_api_id = $1::integer)
-         OR ($2::text IS NOT NULL AND face_img_name = $2::text)
-      ORDER BY id DESC
-      LIMIT 1
-    `,
-    [faceApiId, faceImgName]
-  );
-
-  if (existing.rows[0]) {
-    const updated = await pgPool.query(
-      `
-        UPDATE ${peopleTable}
-        SET person_name = $2,
-            employee_id = $3,
-            department = $4,
-            role = $5,
-            machine = $6,
-            machine_name = $7,
-            shift_code = $8,
-            face_api_id = $9,
-            face_api_object_id = $10,
-            face_img_name = $11,
-            face_app_namespace = $12,
-            face_hash = $13,
-            embedding_hash = $14,
-            is_active = TRUE
-        WHERE id = $1
-        RETURNING *
-      `,
-      [
-        existing.rows[0].id,
-        person_name,
-        employee_id || null,
-        department || null,
-        role || "operator",
-        machine || null,
-        machine_name || machine || null,
-        normalizeShiftCode(shift_code),
-        faceApiId,
-        candidate?.face_api_object_id || null,
-        faceImgName,
-        candidate?.app_namespace || APP_NAMESPACE,
-        candidate?.face_hash || null,
-        candidate?.embedding_hash || null,
-      ]
-    );
-    return updated.rows[0];
-  }
-
-  const saved = await pgPool.query(
-    `
-      INSERT INTO ${peopleTable} (
-        person_name,
-        employee_id,
-        department,
-        role,
-        machine,
-        machine_name,
-        shift_code,
-        face_api_id,
-        face_api_object_id,
-        face_img_name,
-        face_app_namespace,
-        face_hash,
-        embedding_hash,
-        is_active
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, TRUE)
-      RETURNING *
-    `,
-    [
-      person_name,
-      employee_id || null,
-      department || null,
-      role || "operator",
-      machine || null,
-      machine_name || machine || null,
-      normalizeShiftCode(shift_code),
-      faceApiId,
-      candidate?.face_api_object_id || null,
-      faceImgName,
-      candidate?.app_namespace || APP_NAMESPACE,
-      candidate?.face_hash || null,
-      candidate?.embedding_hash || null,
-    ]
-  );
-
-  return saved.rows[0];
-}
-
-async function saveShiftRegistration({ operator, machine, machine_name, shift_code, now = new Date() }) {
+async function saveShiftRegistration({ person_name, machine, machine_name, shift_code, pin, now = new Date() }) {
   const machineId = normalizeMachineId(machine);
+  const operatorName = String(person_name || "").trim();
+  const normalizedPin = requireSixDigitPin(pin);
+  const pinHash = operatorPinHash(normalizedPin);
   const window = getVerificationWindow(shift_code, now);
+
+  if (!operatorName) {
+    const error = new Error("Operator name is required.");
+    error.statusCode = 400;
+    throw error;
+  }
   if (!window) {
     const error = new Error("Select one of the three configured shifts.");
     error.statusCode = 400;
     throw error;
   }
-  if (!window.is_in_window) {
-    const error = new Error(`Registration for ${window.shift_label} is open only from ${window.verification_label}.`);
-    error.statusCode = 409;
-    throw error;
-  }
-
   const machineResult = await pgPool.query(
     `SELECT id, name FROM ${machinesTable} WHERE id = $1 AND is_active = TRUE LIMIT 1`,
     [machineId]
@@ -1024,83 +836,59 @@ async function saveShiftRegistration({ operator, machine, machine_name, shift_co
     `
       INSERT INTO ${operatorRegistrationsTable} (
         person_id, person_name, machine_id, machine_name, shift_code, shift_date,
-        verification_window_start, verification_window_end, is_active, registered_at, updated_at
+        verification_window_start, verification_window_end, pin_hash,
+        is_active, registered_at, updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6::date, $7::timestamptz, $8::timestamptz, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      VALUES (NULL, $1, $2, $3, $4, $5::date, $6::timestamptz, $7::timestamptz, $8, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       ON CONFLICT (machine_id, shift_date, shift_code) DO UPDATE SET
-        person_id = EXCLUDED.person_id,
+        person_id = NULL,
         person_name = EXCLUDED.person_name,
         machine_name = EXCLUDED.machine_name,
         verification_window_start = EXCLUDED.verification_window_start,
         verification_window_end = EXCLUDED.verification_window_end,
+        pin_hash = EXCLUDED.pin_hash,
         is_active = TRUE,
         registered_at = CURRENT_TIMESTAMP,
         updated_at = CURRENT_TIMESTAMP
       RETURNING *
     `,
     [
-      operator.id,
-      operator.person_name,
+      operatorName,
       machineId,
       machine_name || machineResult.rows[0].name,
       window.shift_code,
       window.shift_date,
       window.window_start,
       window.window_end,
+      pinHash,
     ]
   );
 
   return { registration: saved.rows[0], window };
 }
 
-async function findCurrentRegistration({ personId, machine, now = new Date() }) {
+async function findCurrentMachineRegistration({ machine, now = new Date() }) {
   const window = getCurrentVerificationWindow(now);
   if (!window) return { registration: null, window: null };
 
   const found = await pgPool.query(
     `
-      SELECT r.*, p.employee_id, p.department, p.role
-      FROM ${operatorRegistrationsTable} r
-      JOIN ${peopleTable} p ON p.id = r.person_id
-      WHERE r.person_id = $1
-        AND r.machine_id = $2
-        AND r.shift_code = $3
-        AND r.shift_date = $4::date
-        AND r.is_active = TRUE
-        AND p.is_active = TRUE
+      SELECT *
+      FROM ${operatorRegistrationsTable}
+      WHERE machine_id = $1
+        AND shift_code = $2
+        AND shift_date = $3::date
+        AND is_active = TRUE
+      ORDER BY updated_at DESC, id DESC
       LIMIT 1
     `,
-    [personId, normalizeMachineId(machine), window.shift_code, window.shift_date]
+    [normalizeMachineId(machine), window.shift_code, window.shift_date]
   );
 
   return { registration: found.rows[0] || null, window };
 }
 
-async function findOperatorByCandidate(candidate) {
-  const faceApiId = candidate?.face_api_id ?? null;
-  const faceImgName = candidate?.face_img_name ?? null;
-
-  if (!faceApiId && !faceImgName) return null;
-
-  const found = await pgPool.query(
-    `
-      SELECT *
-      FROM ${peopleTable}
-      WHERE is_active = TRUE
-        AND (
-          ($1::integer IS NOT NULL AND face_api_id = $1::integer)
-          OR ($2::text IS NOT NULL AND face_img_name = $2::text)
-        )
-      ORDER BY id DESC
-      LIMIT 1
-    `,
-    [faceApiId, faceImgName]
-  );
-
-  return found.rows[0] || null;
-}
-
-async function insertConfirmationLog({ operator, registration, machine, machine_name, candidate, verification }) {
+async function insertConfirmationLog({ registration, machine, machine_name, verification }) {
   const window = verification?.window || null;
   const saved = await pgPool.query(
     `
@@ -1117,50 +905,40 @@ async function insertConfirmationLog({ operator, registration, machine, machine_
         verification_window_start,
         verification_window_end,
         machine_required,
-        face_api_id,
-        face_api_object_id,
-        face_img_name,
-        face_distance,
-        face_threshold,
-        face_confidence,
-        face_app_namespace,
-        face_hash,
-        embedding_hash,
         confirmation_status,
         registration_id,
-        machine_activity_reason
+        machine_activity_reason,
+        verification_method
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::date, $10::timestamp, $11::timestamp, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+      VALUES (
+        $1, $2, NULL, NULL, 'operator', $3, $4, $5, $6::date,
+        $7::timestamp, $8::timestamp, $9, $10, $11, $12, 'registration_pin'
+      )
       ON CONFLICT (registration_id) WHERE registration_id IS NOT NULL AND confirmation_status = 'confirmed'
-      DO UPDATE SET created_at = CURRENT_TIMESTAMP,
-                    face_distance = EXCLUDED.face_distance,
-                    face_threshold = EXCLUDED.face_threshold,
-                    face_confidence = EXCLUDED.face_confidence,
-                    machine_activity_reason = EXCLUDED.machine_activity_reason
+      DO UPDATE SET
+        person_name = EXCLUDED.person_name,
+        machine = EXCLUDED.machine,
+        machine_name = EXCLUDED.machine_name,
+        shift_code = EXCLUDED.shift_code,
+        shift_date = EXCLUDED.shift_date,
+        verification_window_start = EXCLUDED.verification_window_start,
+        verification_window_end = EXCLUDED.verification_window_end,
+        machine_required = EXCLUDED.machine_required,
+        machine_activity_reason = EXCLUDED.machine_activity_reason,
+        verification_method = 'registration_pin',
+        created_at = CURRENT_TIMESTAMP
       RETURNING *
     `,
     [
-      operator.id,
-      operator.person_name,
-      operator.employee_id || null,
-      operator.department || null,
-      operator.role || "operator",
-      machine || operator.machine || null,
-      machine_name || operator.machine_name || machine || operator.machine || null,
-      verification?.window?.shift_code || normalizeShiftCode(operator.shift_code) || null,
-      verification?.window?.shift_date || null,
+      registration?.person_id || null,
+      registration?.person_name || "No Data",
+      machine || registration?.machine_id || null,
+      machine_name || registration?.machine_name || machine || null,
+      verification?.window?.shift_code || registration?.shift_code || null,
+      verification?.window?.shift_date || registration?.shift_date || null,
       window?.window_start ? new Date(window.window_start) : null,
       window?.window_end ? new Date(window.window_end) : null,
       verification?.machine_required === true,
-      candidate.face_api_id,
-      candidate.face_api_object_id,
-      candidate.face_img_name,
-      candidate.distance,
-      candidate.threshold,
-      candidate.confidence,
-      candidate.app_namespace || null,
-      candidate.face_hash || null,
-      candidate.embedding_hash || null,
       String(verification?.status || "confirmed").toLowerCase(),
       registration?.id || null,
       verification?.machine_reason || null,
@@ -1347,27 +1125,6 @@ async function ensureTables() {
   await pgPool.query(`CREATE SCHEMA IF NOT EXISTS "${safeSchema}"`);
 
   await pgPool.query(`
-    CREATE TABLE IF NOT EXISTS ${peopleTable} (
-      id SERIAL PRIMARY KEY,
-      person_name TEXT NOT NULL,
-      employee_id TEXT,
-      department TEXT,
-      role TEXT DEFAULT 'operator',
-      machine TEXT,
-      machine_name TEXT,
-      shift_code TEXT,
-      face_api_id INTEGER,
-      face_api_object_id TEXT,
-      face_img_name TEXT,
-      face_app_namespace TEXT,
-      face_hash TEXT,
-      embedding_hash TEXT,
-      is_active BOOLEAN DEFAULT TRUE,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  await pgPool.query(`
     CREATE TABLE IF NOT EXISTS ${confirmationsTable} (
       id SERIAL PRIMARY KEY,
       person_id INTEGER,
@@ -1382,16 +1139,10 @@ async function ensureTables() {
       verification_window_start TIMESTAMP,
       verification_window_end TIMESTAMP,
       machine_required BOOLEAN DEFAULT TRUE,
-      face_api_id INTEGER,
-      face_api_object_id TEXT,
-      face_img_name TEXT,
-      face_distance DOUBLE PRECISION,
-      face_threshold DOUBLE PRECISION,
-      face_confidence DOUBLE PRECISION,
-      face_app_namespace TEXT,
-      face_hash TEXT,
-      embedding_hash TEXT,
       confirmation_status TEXT DEFAULT 'confirmed',
+      registration_id BIGINT,
+      machine_activity_reason TEXT,
+      verification_method TEXT NOT NULL DEFAULT 'registration_pin',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -1399,7 +1150,7 @@ async function ensureTables() {
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS ${operatorRegistrationsTable} (
       id BIGSERIAL PRIMARY KEY,
-      person_id INTEGER NOT NULL REFERENCES ${peopleTable}(id),
+      person_id INTEGER,
       person_name TEXT NOT NULL,
       machine_id TEXT NOT NULL,
       machine_name TEXT NOT NULL,
@@ -1407,11 +1158,27 @@ async function ensureTables() {
       shift_date DATE NOT NULL,
       verification_window_start TIMESTAMPTZ NOT NULL,
       verification_window_end TIMESTAMPTZ NOT NULL,
+      pin_hash TEXT,
       is_active BOOLEAN NOT NULL DEFAULT TRUE,
       registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE (machine_id, shift_date, shift_code)
     )
+  `);
+
+  // Existing face-based installations may still have a NOT NULL + FK on person_id.
+  // The PIN workflow stores the operator name directly on the shift registration.
+  await pgPool.query(`
+    ALTER TABLE ${operatorRegistrationsTable}
+      DROP CONSTRAINT IF EXISTS operator_shift_registrations_person_id_fkey
+  `);
+  await pgPool.query(`
+    ALTER TABLE ${operatorRegistrationsTable}
+      ALTER COLUMN person_id DROP NOT NULL
+  `);
+  await pgPool.query(`
+    ALTER TABLE ${operatorRegistrationsTable}
+      ADD COLUMN IF NOT EXISTS pin_hash TEXT
   `);
 
   await pgPool.query(`
@@ -1549,29 +1316,17 @@ async function ensureTables() {
   // No startup sample machine, image, segment, or point data.
   // Real configuration is created through Admin. Empty systems remain No Data.
 
-  // Safe migrations for old test tables.
-  const peopleColumns = [
-    ["employee_id", "TEXT"], ["department", "TEXT"], ["role", "TEXT DEFAULT 'operator'"],
-    ["machine", "TEXT"], ["machine_name", "TEXT"], ["shift_code", "TEXT"], ["face_api_id", "INTEGER"],
-    ["face_api_object_id", "TEXT"], ["face_img_name", "TEXT"], ["face_app_namespace", "TEXT"],
-    ["face_hash", "TEXT"], ["embedding_hash", "TEXT"], ["is_active", "BOOLEAN DEFAULT TRUE"],
-    ["created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"]
-  ];
-  for (const [col, typ] of peopleColumns) {
-    await pgPool.query(`ALTER TABLE ${peopleTable} ADD COLUMN IF NOT EXISTS ${col} ${typ}`);
-  }
-
+  // Safe migrations for older database revisions.
   const confirmationColumns = [
     ["person_id", "INTEGER"], ["person_name", "TEXT"], ["employee_id", "TEXT"],
     ["department", "TEXT"], ["role", "TEXT"], ["machine", "TEXT"],
     ["machine_name", "TEXT"], ["shift_code", "TEXT"], ["shift_date", "DATE"],
     ["verification_window_start", "TIMESTAMP"], ["verification_window_end", "TIMESTAMP"],
-    ["machine_required", "BOOLEAN DEFAULT TRUE"], ["face_api_id", "INTEGER"], ["face_api_object_id", "TEXT"],
-    ["face_img_name", "TEXT"], ["face_distance", "DOUBLE PRECISION"], ["face_threshold", "DOUBLE PRECISION"],
-    ["face_confidence", "DOUBLE PRECISION"], ["face_app_namespace", "TEXT"],
-    ["face_hash", "TEXT"], ["embedding_hash", "TEXT"],
+    ["machine_required", "BOOLEAN DEFAULT TRUE"],
     ["confirmation_status", "TEXT DEFAULT 'confirmed'"], ["registration_id", "BIGINT"],
-    ["machine_activity_reason", "TEXT"], ["created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"]
+    ["machine_activity_reason", "TEXT"],
+    ["verification_method", "TEXT NOT NULL DEFAULT 'registration_pin'"],
+    ["created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"]
   ];
   for (const [col, typ] of confirmationColumns) {
     await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS ${col} ${typ}`);
@@ -2468,80 +2223,50 @@ app.get("/data-machine2", (req, res) => {
   res.json(currentMachineResponse("machine2"));
 });
 
+
 async function registerOperatorHandler(req, res) {
   try {
     if (!requireAdmin(req, res)) return;
-    const { person_name, employee_id, department, role, machine, machine_name } = req.body;
-    const shift_code = normalizeShiftCode(req.body.shift_code || req.body.shift);
-    const image = req.body.image || req.body.img;
 
-    if (!person_name || !machine || !shift_code || !image) {
-      return res.status(400).json({ error: "Operator name, machine, shift, and face image are required." });
-    }
+    const personName = String(req.body?.person_name || "").trim();
+    const machine = String(req.body?.machine || "").trim();
+    const machineName = String(req.body?.machine_name || "").trim();
+    const shiftCode = normalizeShiftCode(req.body?.shift_code || req.body?.shift);
+    const pin = normalizePin(req.body?.pin);
 
-    const window = getVerificationWindow(shift_code, new Date());
-    if (!window?.is_in_window) {
-      return res.status(409).json({
-        error: window
-          ? `Registration for ${window.shift_label} is open only from ${window.verification_label}.`
-          : "Select one of the three configured shifts.",
+    if (!personName || !machine || !shiftCode || !pin) {
+      return res.status(400).json({
+        error: "Operator name, machine, shift, and 6-digit PIN are required.",
       });
     }
 
-    let searchResponse = await faceApiPost("/search", searchPayload(image));
-    let candidate = firstFaceCandidate(searchResponse);
-
-    if (!candidate?.face_api_id && !candidate?.face_img_name) {
-      await faceApiPost("/register", facePayload(image, {
-        person_name,
-        name: person_name,
-        identity: `${APP_NAMESPACE}|${normalizeMachineId(machine)}|${person_name}`,
-        employee_id: employee_id || "",
-        department: department || "Production",
-        role: role || "operator",
-        machine: normalizeMachineId(machine),
-        machine_name: machine_name || machine,
-        shift_code,
-        shift_label: SHIFT_WINDOWS[shift_code]?.shiftLabel || shift_code,
-        source_app: "Machine Monitoring",
-        app_namespace: APP_NAMESPACE,
-        is_active: true,
-      }));
-      searchResponse = await faceApiPost("/search", searchPayload(image));
-      candidate = firstFaceCandidate(searchResponse);
+    const window = getVerificationWindow(shiftCode, new Date());
+    if (!window) {
+      return res.status(400).json({ error: "Select one of the three configured shifts." });
     }
 
-    if (!candidate?.face_api_id && !candidate?.face_img_name) {
-      return res.status(502).json({
-        error: "The face could not be registered. Retake the image in even lighting and try again.",
-      });
-    }
-
-    const operator = await upsertOperatorFace({
-      person_name,
-      employee_id,
-      department: department || "Production",
-      role: role || "operator",
-      machine: normalizeMachineId(machine),
-      machine_name: machine_name || machine,
-      shift_code,
-      candidate,
-    });
+    // Registration is allowed at any time. The operator chooses the 6-digit PIN
+    // here; only confirmation is restricted to the shift's four-hour window.
+    requireSixDigitPin(pin);
 
     const assignment = await saveShiftRegistration({
-      operator,
+      person_name: personName,
       machine,
-      machine_name,
-      shift_code,
+      machine_name: machineName,
+      shift_code: shiftCode,
+      pin,
       now: new Date(),
     });
 
     res.json({
       ok: true,
-      message: `${operator.person_name} is registered for ${assignment.registration.machine_name}.`,
-      operator: { id: operator.id, person_name: operator.person_name },
+      message: `${assignment.registration.person_name} is registered for ${assignment.registration.machine_name}.`,
+      operator: {
+        person_name: assignment.registration.person_name,
+      },
       registration: assignment.registration,
       window: assignment.window,
+      verification_method: "registration_pin",
     });
   } catch (err) {
     logError("❌ Operator registration failed", err);
@@ -2550,7 +2275,6 @@ async function registerOperatorHandler(req, res) {
 }
 
 app.post("/api/operator/register", registerOperatorHandler);
-app.post("/api/face/register", registerOperatorHandler);
 
 app.get("/api/operator/registration-context", (req, res) => {
   const now = new Date();
@@ -2564,130 +2288,80 @@ app.get("/api/operator/registration-context", (req, res) => {
   });
 });
 
-app.post("/api/machine-check/detect", async (req, res) => {
+app.post("/api/machine-check/confirm", async (req, res) => {
   try {
-    const { machine, machine_name } = req.body;
-    const image = req.body.image || req.body.img;
+    const machineId = normalizeMachineId(req.body?.machine);
+    const machineName = String(req.body?.machine_name || "").trim();
+    const pin = normalizePin(req.body?.pin);
+    const now = new Date();
 
-    if (!machine || !image) {
-      return res.status(400).json({ error: "Machine and face image are required." });
-    }
-
-    const machineId = normalizeMachineId(machine);
-    const machineState = getMachineVerificationState(machineStateFor(machineId), new Date());
-    if (!machineState.required) {
-      return res.json({
-        ok: true,
-        not_required: true,
-        machine: { id: machineId, name: machine_name || machineId },
-        machine_state: machineState,
+    if (!machineId || !pin) {
+      return res.status(400).json({
+        error: "Machine and 6-digit PIN are required.",
       });
     }
 
-    const currentWindow = getCurrentVerificationWindow(new Date());
+    const currentWindow = getCurrentVerificationWindow(now);
     if (!currentWindow) {
-      return res.status(409).json({ error: "No confirmation window is open right now." });
+      return res.status(409).json({
+        error: "No confirmation window is open right now.",
+      });
     }
 
-    const searchResponse = await faceApiPost("/search", searchPayload(image));
-    const candidate = firstFaceCandidate(searchResponse);
+    requireSixDigitPin(pin);
 
-    if (!candidate?.face_api_id && !candidate?.face_img_name) {
-      return res.status(404).json({ error: "Face not detected. Try again while looking directly at the camera." });
-    }
-
-    const operator = await findOperatorByCandidate(candidate);
-
-    if (!operator) {
-      return res.status(403).json({ error: "This face is not registered for machine confirmation." });
-    }
-
-    const { registration, window } = await findCurrentRegistration({
-      personId: operator.id,
+    const { registration, window } = await findCurrentMachineRegistration({
       machine: machineId,
-      now: new Date(),
+      now,
     });
 
     if (!registration) {
       return res.status(403).json({
-        error: `The detected operator is not registered for ${machine_name || machineId} during the current shift.`,
+        error: `No operator is registered for ${machineName || machineId} during the current shift.`,
       });
     }
 
-    const token = crypto.randomBytes(24).toString("hex");
-    const expiresAt = Date.now() + FACE_DETECTION_TTL_MS;
-    faceDetectionSessions.set(token, {
-      operator,
-      registration,
-      candidate,
-      machine: machineId,
-      machine_name: machine_name || registration.machine_name || machineId,
-      window,
-      expiresAt,
-    });
+    verifyRegistrationPin(pin, registration);
 
-    for (const [sessionToken, session] of faceDetectionSessions.entries()) {
-      if (session.expiresAt < Date.now()) faceDetectionSessions.delete(sessionToken);
-    }
+    const machineState = getMachineVerificationState(machineStateFor(machineId), now);
 
-    res.json({
-      ok: true,
-      detected: true,
-      detection_token: token,
-      expires_at: new Date(expiresAt).toISOString(),
-      operator: { person_name: registration.person_name },
-      machine: { id: registration.machine_id, name: registration.machine_name },
-      shift: {
-        code: registration.shift_code,
-        label: SHIFT_WINDOWS[registration.shift_code]?.shiftLabel || registration.shift_code,
-        confirmation_window: SHIFT_WINDOWS[registration.shift_code]?.label || "No data",
-      },
-    });
-  } catch (err) {
-    logError("❌ Face detection failed", err);
-    res.status(err.statusCode || 500).json({ error: err.message });
-  }
-});
-
-app.post("/api/machine-check/confirm", async (req, res) => {
-  try {
-    const token = String(req.body.detection_token || "").trim();
-    if (!token) return res.status(400).json({ error: "Detect the registered operator first." });
-
-    const session = faceDetectionSessions.get(token);
-    faceDetectionSessions.delete(token);
-    if (!session || session.expiresAt < Date.now()) {
-      return res.status(410).json({ error: "Face detection expired. Detect the operator again." });
-    }
-
-    const machineState = getMachineVerificationState(machineStateFor(session.machine), new Date());
-    if (!machineState.required) {
-      return res.json({ ok: true, not_required: true, machine_state: machineState });
-    }
-
+    // A valid registration PIN during the active shift window is the confirmation.
+    // Machine state is still recorded for context, but it does not block confirmation.
     const verification = {
       status: "CONFIRMED",
       label: "Machine check confirmed",
-      machine_required: true,
+      machine_required: machineState.required === true,
       machine_reason: machineState.reason,
-      window: session.window,
+      window,
+      method: "registration_pin",
     };
 
     const log = await insertConfirmationLog({
-      operator: session.operator,
-      registration: session.registration,
-      machine: session.machine,
-      machine_name: session.machine_name,
-      candidate: session.candidate,
+      registration,
+      machine: machineId,
+      machine_name: machineName || registration.machine_name || machineId,
       verification,
     });
 
     res.json({
       ok: true,
-      log: { id: log.id, person_name: log.person_name, created_at: log.created_at },
-      operator: { person_name: session.registration.person_name },
-      machine: { id: session.machine, name: session.machine_name },
-      shift: { code: session.registration.shift_code, label: SHIFT_WINDOWS[session.registration.shift_code]?.shiftLabel },
+      log: {
+        id: log.id,
+        person_name: log.person_name,
+        created_at: log.created_at,
+      },
+      operator: {
+        person_name: registration.person_name,
+      },
+      machine: {
+        id: machineId,
+        name: machineName || registration.machine_name || machineId,
+      },
+      shift: {
+        code: registration.shift_code,
+        label: SHIFT_WINDOWS[registration.shift_code]?.shiftLabel || registration.shift_code,
+        confirmation_window: SHIFT_WINDOWS[registration.shift_code]?.label || "No data",
+      },
       verification,
     });
   } catch (err) {
@@ -2715,69 +2389,14 @@ async function operatorOverviewHandler(req, res) {
 app.post("/api/operator/admin/overview", operatorOverviewHandler);
 app.post("/api/machine-check/admin/logs", operatorOverviewHandler);
 
-app.post("/api/face/unregister", async (req, res) => {
-  try {
-    const { password, face_api_id, face_img_name } = req.body;
 
-    if (password !== ADMIN_PASSWORD) {
-      return res.status(401).json({ error: "Invalid admin password." });
-    }
-
-    if (!face_api_id && !face_img_name) {
-      return res.status(400).json({ error: "face_api_id or face_img_name is required." });
-    }
-
-    const updated = await pgPool.query(
-      `
-        UPDATE ${peopleTable}
-        SET is_active = FALSE
-        WHERE ($1::integer IS NOT NULL AND face_api_id = $1::integer)
-           OR ($2::text IS NOT NULL AND face_img_name = $2::text)
-        RETURNING *
-      `,
-      [face_api_id || null, face_img_name || null]
-    );
-
-    if (updated.rows.length) {
-      await pgPool.query(
-        `UPDATE ${operatorRegistrationsTable} SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE person_id = ANY($1::integer[])`,
-        [updated.rows.map((row) => Number(row.id))]
-      );
-    }
-
-    let faceApiUnregisterResponse = null;
-    if (FACE_UNREGISTER_PATH) {
-      faceApiUnregisterResponse = await faceApiPost(FACE_UNREGISTER_PATH, {
-        id: face_api_id,
-        face_api_id,
-        img_name: face_img_name,
-        app_namespace: APP_NAMESPACE,
-        is_active: false,
-      });
-    }
-
-    res.json({
-      ok: true,
-      message: updated.rowCount
-        ? "Face deactivated in PostgreSQL for this dashboard."
-        : "No PostgreSQL operator mapping was found for that Face ID / Image ID.",
-      updated: updated.rows,
-      faceApiUnregisterResponse,
-    });
-  } catch (err) {
-    logError("❌ Face unregister failed", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-app.get("/api/face/health", async (req, res) => {
+app.get("/api/operator/health", async (req, res) => {
   try {
     await pgPool.query("SELECT 1");
     res.json({
       ok: true,
       postgres: true,
-      faceRecognitionConfigured: Boolean(FACE_API_BASE_URL),
+      verificationMethod: "registration_pin",
       shiftWindows: SHIFT_WINDOWS,
       staleSeconds: MACHINE_DATA_STALE_SECONDS,
     });
@@ -2792,10 +2411,7 @@ async function startServer() {
   return app.listen(PORT, () => {
       logInfo(`✅ Backend running: http://localhost:${PORT}`);
       logInfo(`✅ Dashboard API: http://localhost:${PORT}/data`);
-      logInfo(`✅ Face recognition: ${FACE_API_BASE_URL ? "configured" : "not configured"}`);
-      logDebug(`App namespace: ${APP_NAMESPACE}`);
-      logDebug(`PostgreSQL people table: ${peopleTable}`);
-      logInfo(`✅ PostgreSQL: ${peopleTable}, ${confirmationsTable}, ${machinesTable}`);
+      logInfo(`✅ PostgreSQL: ${confirmationsTable}, ${operatorRegistrationsTable}, ${machinesTable}`);
       logInfo(`✅ Machine configuration tables: ${machineSourcesTable}, ${machineImagesTable}, ${machineSegmentsTable}, ${machinePointsTable}`);
       logInfo(`✅ Session logs: ${sessionLogsTable}`);
   });

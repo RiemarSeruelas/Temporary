@@ -7,7 +7,6 @@ services:
     environment:
       PORT: 5000
       LOG_LEVEL: ${LOG_LEVEL:-minimal}
-      POSTGRES_ENABLED: ${POSTGRES_ENABLED:-true}
       POSTGRES_HOST: ${POSTGRES_HOST}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       POSTGRES_DB: ${POSTGRES_DB}
@@ -20,10 +19,6 @@ services:
       MQTT_USERNAME: ${MQTT_USERNAME:-}
       MQTT_PASSWORD: ${MQTT_PASSWORD:-}
       MQTT_TOPIC: ${MQTT_TOPIC:-sensor/data}
-      FACE_API_BASE_URL: ${FACE_API_BASE_URL:-}
-      APP_NAMESPACE: ${APP_NAMESPACE:-machine_dashboard}
-      APP_NAMESPACE_STRICT: ${APP_NAMESPACE_STRICT:-false}
-      FACE_UNREGISTER_PATH: ${FACE_UNREGISTER_PATH:-}
       MACHINE_DATA_STALE_SECONDS: ${MACHINE_DATA_STALE_SECONDS:-300}
       TZ: Asia/Manila
     healthcheck:

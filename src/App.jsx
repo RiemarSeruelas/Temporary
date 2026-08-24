@@ -1474,7 +1474,7 @@ function LegacyDashboardApp({
   const [selectedPoint, setSelectedPoint] = useState(null);
   const [machinePickerOpen, setMachinePickerOpen] = useState(false);
   const [machineImageAspect, setMachineImageAspect] = useState(FIXED_MACHINE_CANVAS_ASPECT);
-  const [faceModalOpen, setFaceModalOpen] = useState(false);
+  const [confirmationModalOpen, setConfirmationModalOpen] = useState(false);
   const [confirmToast, setConfirmToast] = useState("");
   const [machineSwipeOffset, setMachineSwipeOffset] = useState(0);
   const [machineSwipeActive, setMachineSwipeActive] = useState(false);
@@ -1783,7 +1783,7 @@ const machineRows = useMemo(() => {
             <span>{theme === "dark" ? "☀" : "☾"}</span>
             {theme === "dark" ? "Light" : "Dark"}
           </button>
-          <button className="studio-confirm-button" onClick={() => setFaceModalOpen(true)} disabled={!machineList.length}>
+          <button className="studio-confirm-button" onClick={() => setConfirmationModalOpen(true)} disabled={!machineList.length}>
             <span>✓</span> Confirm check
           </button>
         </div>
@@ -1976,11 +1976,11 @@ const machineRows = useMemo(() => {
         />
       )}
 
-      {faceModalOpen && (
+      {confirmationModalOpen && (
         <ConfirmationModal
           machine={activeMachine}
           theme={theme}
-          onClose={() => setFaceModalOpen(false)}
+          onClose={() => setConfirmationModalOpen(false)}
           onConfirmed={(message) => showConfirmationToast(message)}
         />
       )}

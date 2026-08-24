@@ -4041,67 +4041,6 @@ button:hover {
   font-size: 9px;
 }
 
-.operator-camera {
-  border: 1px solid var(--admin-line);
-  background: var(--admin-field);
-  border-radius: 14px;
-  flex: 1;
-  place-items: center;
-  min-height: 220px;
-  display: grid;
-  position: relative;
-  overflow: hidden;
-}
-
-.operator-camera video {
-  object-fit: cover;
-  width: 100%;
-  height: 100%;
-  min-height: 220px;
-  display: block;
-  transform: scaleX(-1);
-}
-
-.operator-camera > div {
-  color: var(--admin-muted);
-  text-align: center;
-  justify-items: center;
-  gap: 6px;
-  max-width: 260px;
-  padding: 24px;
-  display: grid;
-}
-
-.operator-camera > div > i {
-  border: 2px solid var(--admin-faint);
-  border-radius: 50%;
-  width: 48px;
-  height: 48px;
-  position: relative;
-}
-
-.operator-camera > div > i:after {
-  content: "";
-  border: 2px solid var(--admin-faint);
-  border-radius: 20px 20px 8px 8px;
-  width: 70px;
-  height: 34px;
-  position: absolute;
-  top: 50px;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.operator-camera > div strong {
-  color: var(--admin-text);
-  margin-top: 40px;
-  font-size: 14px;
-}
-
-.operator-camera > div span {
-  font-size: 9px;
-  line-height: 1.5;
-}
 
 .operator-registration-actions {
   justify-content: flex-end;
@@ -4379,7 +4318,7 @@ button:hover {
 .operator-log-entry.missed em { color: #ff6f76; }
 
 /* =========================================================
-   OPERATOR FACE CONFIRMATION
+   OPERATOR PIN CONFIRMATION
 ========================================================= */
 
 .confirmation-backdrop {
@@ -4441,155 +4380,6 @@ button:hover {
   right: 14px;
 }
 
-.confirmation-camera-stage {
-  background: #020406;
-  height: min(620px, calc(100dvh - 40px));
-  min-height: 440px;
-  position: relative;
-  overflow: hidden;
-}
-
-.confirmation-camera-stage video {
-  object-fit: cover;
-  width: 100%;
-  height: 100%;
-  display: block;
-  transform: scaleX(-1);
-}
-
-.confirmation-camera-stage:after {
-  content: "";
-  pointer-events: none;
-  background: linear-gradient(transparent 50%, #0000008c 100%);
-  position: absolute;
-  inset: 0;
-}
-
-.confirmation-scan-frame {
-  width: min(310px, 60%);
-  aspect-ratio: .82;
-  position: absolute;
-  top: 48%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-}
-
-.confirmation-scan-frame i {
-  border-color: #fff;
-  width: 44px;
-  height: 44px;
-  position: absolute;
-}
-
-.confirmation-scan-frame i:nth-child(1) { border-top: 3px solid; border-left: 3px solid; border-radius: 12px 0 0; top: 0; left: 0; }
-.confirmation-scan-frame i:nth-child(2) { border-top: 3px solid; border-right: 3px solid; border-radius: 0 12px 0 0; top: 0; right: 0; }
-.confirmation-scan-frame i:nth-child(3) { border-bottom: 3px solid; border-left: 3px solid; border-radius: 0 0 0 12px; bottom: 0; left: 0; }
-.confirmation-scan-frame i:nth-child(4) { border-bottom: 3px solid; border-right: 3px solid; border-radius: 0 0 12px; right: 0; bottom: 0; }
-
-.confirmation-scanning {
-  z-index: 3;
-  color: #fff;
-  background: #05080bc7;
-  border: 1px solid #ffffff2c;
-  border-radius: 999px;
-  align-items: center;
-  gap: 9px;
-  padding: 9px 13px;
-  font-size: 10px;
-  font-weight: 750;
-  display: flex;
-  position: absolute;
-  bottom: 22px;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.confirmation-scanning > i {
-  border: 2px solid #ffffff3d;
-  border-top-color: #fff;
-  border-radius: 50%;
-  width: 13px;
-  height: 13px;
-  animation: confirmationSpin .8s linear infinite;
-}
-
-@keyframes confirmationSpin { to { transform: rotate(360deg); } }
-
-.confirmation-identity {
-  text-align: center;
-  justify-items: center;
-  align-content: center;
-  gap: 10px;
-  min-height: 520px;
-  padding: clamp(36px, 7vw, 70px);
-  display: grid;
-}
-
-.confirmation-checkmark,
-.confirmation-offline-mark,
-.confirmation-error-mark {
-  color: #69dfa0;
-  border: 1px solid #69dfa052;
-  background: #69dfa014;
-  border-radius: 50%;
-  place-items: center;
-  width: 64px;
-  height: 64px;
-  margin-bottom: 6px;
-  font-size: 28px;
-  font-weight: 800;
-  display: grid;
-}
-
-.confirmation-offline-mark { color: var(--confirm-muted); border-color: var(--confirm-line); background: var(--confirm-panel-strong); }
-.confirmation-error-mark { color: #ff777e; border-color: #ff777e52; background: #ff777e14; }
-
-.confirmation-identity > span {
-  color: var(--confirm-muted);
-  letter-spacing: .13em;
-  text-transform: uppercase;
-  font-size: 9px;
-  font-weight: 800;
-}
-
-.confirmation-identity h2 {
-  color: var(--confirm-text);
-  letter-spacing: -.045em;
-  margin: 0;
-  font-size: clamp(34px, 6vw, 58px);
-  font-weight: 620;
-  line-height: 1;
-}
-
-.confirmation-identity > p {
-  color: var(--confirm-muted);
-  max-width: 480px;
-  margin: 8px 0 0;
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.confirmation-identity-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  width: 100%;
-  margin-top: 12px;
-  display: grid;
-}
-
-.confirmation-identity-grid > div {
-  border: 1px solid var(--confirm-line);
-  background: var(--confirm-panel-strong);
-  border-radius: 12px;
-  text-align: left;
-  gap: 4px;
-  min-width: 0;
-  padding: 12px 14px;
-  display: grid;
-}
-
-.confirmation-identity-grid small { color: var(--confirm-muted); font-size: 8px; }
-.confirmation-identity-grid strong { color: var(--confirm-text); text-overflow: ellipsis; white-space: nowrap; overflow: hidden; font-size: 11px; }
 
 .confirmation-actions {
   grid-template-columns: repeat(2, minmax(140px, 190px));
@@ -4620,6 +4410,208 @@ button:hover {
 }
 
 .confirmation-actions button:disabled { cursor: wait; opacity: .55; }
+
+
+
+.confirmation-pin-dialog {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.confirmation-pin-stage {
+  min-height: 520px;
+  padding: clamp(44px, 7vw, 72px);
+  text-align: center;
+  justify-items: center;
+  align-content: center;
+  gap: 12px;
+  display: grid;
+  background:
+    radial-gradient(circle at 50% 18%, color-mix(in srgb, var(--confirm-accent) 12%, transparent), transparent 32%),
+    var(--confirm-panel);
+}
+
+.confirmation-pin-icon {
+  width: 72px;
+  height: 72px;
+  margin-bottom: 8px;
+  border: 1px solid var(--confirm-line);
+  border-radius: 20px;
+  background: var(--confirm-panel-strong);
+  place-items: center;
+  align-content: center;
+  gap: 2px;
+  display: grid;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--confirm-text) 8%, transparent);
+}
+
+.confirmation-pin-icon span {
+  color: var(--confirm-accent);
+  letter-spacing: .22em;
+  line-height: .7;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.confirmation-pin-kicker {
+  color: var(--confirm-muted);
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.confirmation-pin-stage h2 {
+  margin: 0;
+  color: var(--confirm-text);
+  letter-spacing: -.04em;
+  font-size: clamp(28px, 5vw, 44px);
+  font-weight: 650;
+}
+
+.confirmation-pin-stage > p {
+  max-width: 500px;
+  margin: 0 0 6px;
+  color: var(--confirm-muted);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.confirmation-pin-stage > p strong {
+  color: var(--confirm-text);
+}
+
+.confirmation-pin-machine {
+  width: min(420px, 100%);
+  margin: 8px 0 2px;
+  padding: 11px 14px;
+  text-align: left;
+  border: 1px solid var(--confirm-line);
+  border-radius: 12px;
+  background: var(--confirm-panel-strong);
+  display: grid;
+  gap: 3px;
+}
+
+.confirmation-pin-machine small {
+  color: var(--confirm-muted);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.confirmation-pin-machine strong {
+  color: var(--confirm-text);
+  font-size: 12px;
+}
+
+.pin-input {
+  width: min(420px, 100%);
+  height: 66px;
+  padding: 0 14px 0 24px;
+  color: var(--confirm-text, var(--admin-text));
+  caret-color: var(--confirm-accent, var(--admin-accent));
+  border: 1px solid var(--confirm-line, var(--admin-line));
+  border-radius: 14px;
+  outline: none;
+  background: var(--confirm-bg, var(--admin-field));
+  text-align: center;
+  letter-spacing: .34em;
+  font-size: clamp(24px, 4vw, 34px);
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+}
+
+.pin-input::placeholder {
+  color: color-mix(in srgb, var(--confirm-muted, var(--admin-muted)) 58%, transparent);
+  letter-spacing: .18em;
+  font-size: .55em;
+  font-weight: 750;
+}
+
+.pin-input:focus {
+  border-color: var(--confirm-accent, var(--admin-accent));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--confirm-accent, var(--admin-accent)) 12%, transparent);
+}
+
+.pin-input:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+.confirmation-pin-error {
+  width: min(420px, 100%);
+  padding: 9px 12px;
+  color: #ff858b;
+  border: 1px solid #ff777e45;
+  border-radius: 10px;
+  background: #ff777e10;
+  font-size: 10px;
+}
+
+.operator-pin-panel {
+  border: 1px solid var(--admin-line);
+  background: var(--admin-field);
+  border-radius: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  align-items: center;
+  gap: 18px;
+  padding: 18px;
+  display: grid;
+}
+
+.operator-pin-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.operator-pin-copy > span {
+  color: var(--admin-muted);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.operator-pin-copy > strong {
+  color: var(--admin-text);
+  font-size: 15px;
+}
+
+.operator-pin-copy > small {
+  max-width: 440px;
+  color: var(--admin-muted);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.operator-pin-panel .pin-input {
+  --confirm-text: var(--admin-text);
+  --confirm-muted: var(--admin-muted);
+  --confirm-accent: var(--admin-accent);
+  --confirm-line: var(--admin-line);
+  --confirm-bg: var(--admin-panel-strong);
+  width: 100%;
+  height: 58px;
+  font-size: 25px;
+}
+
+@media (max-width: 680px) {
+  .confirmation-pin-stage {
+    min-height: 470px;
+    padding: 54px 18px 28px;
+  }
+
+  .operator-pin-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .operator-pin-panel .pin-input {
+    max-width: none;
+  }
+}
 
 
 /* =========================================================
@@ -4700,17 +4692,10 @@ button:hover {
     max-height: calc(100dvh - 20px);
   }
 
-  .confirmation-identity {
-    padding: 52px 18px 24px;
-  }
 
-  .confirmation-identity-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .confirmation-scanning > i,
   .admin-hub-card {
     animation: none;
   }
@@ -4991,138 +4976,6 @@ button:hover {
   min-height: 176px;
 }
 
-/* Native image capture: mobile opens the front camera; desktop opens a file picker. */
-.face-image-input {
-  position: fixed;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  opacity: 0;
-  pointer-events: none;
-  clip-path: inset(50%);
-}
-
-.operator-camera img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  min-height: 220px;
-  object-fit: cover;
-}
-
-.operator-camera.has-image::after {
-  position: absolute;
-  inset: 0;
-  border: 1px solid color-mix(in srgb, var(--admin-accent) 45%, transparent);
-  border-radius: inherit;
-  content: "";
-  pointer-events: none;
-}
-
-.confirmation-capture-stage {
-  position: relative;
-  display: grid;
-  min-height: 520px;
-  place-items: center;
-  overflow: hidden;
-  background:
-    radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--confirm-accent) 18%, transparent), transparent 34%),
-    var(--confirm-bg);
-}
-
-.confirmation-capture-stage > img {
-  display: block;
-  width: 100%;
-  height: min(620px, calc(100dvh - 40px));
-  min-height: 440px;
-  object-fit: cover;
-}
-
-.confirmation-capture-empty {
-  display: grid;
-  width: min(520px, calc(100% - 44px));
-  justify-items: center;
-  gap: 9px;
-  padding: 46px 32px;
-  text-align: center;
-  border: 1px solid var(--confirm-line);
-  border-radius: 20px;
-  background: color-mix(in srgb, var(--confirm-panel) 94%, transparent);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, .24);
-}
-
-.confirmation-capture-empty > i {
-  position: relative;
-  width: 68px;
-  height: 68px;
-  margin-bottom: 12px;
-  border: 2px solid var(--confirm-muted);
-  border-radius: 50%;
-}
-
-.confirmation-capture-empty > i::after {
-  position: absolute;
-  top: 70px;
-  left: 50%;
-  width: 94px;
-  height: 43px;
-  border: 2px solid var(--confirm-muted);
-  border-radius: 26px 26px 10px 10px;
-  content: "";
-  transform: translateX(-50%);
-}
-
-.confirmation-capture-empty > span {
-  margin-top: 38px;
-  color: var(--confirm-muted);
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-}
-
-.confirmation-capture-empty h2 {
-  margin: 0;
-  color: var(--confirm-text);
-  font-size: clamp(25px, 5vw, 40px);
-  font-weight: 620;
-  letter-spacing: -.04em;
-}
-
-.confirmation-capture-empty p {
-  max-width: 390px;
-  margin: 3px 0 12px;
-  color: var(--confirm-muted);
-  font-size: 11px;
-  line-height: 1.6;
-}
-
-.confirmation-capture-empty button {
-  min-width: 170px;
-  height: 44px;
-  color: var(--confirm-bg);
-  border: 1px solid var(--confirm-accent);
-  border-radius: 10px;
-  background: var(--confirm-accent);
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.confirmation-detecting-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  display: grid;
-  place-items: end center;
-  padding-bottom: 28px;
-  background: linear-gradient(transparent 42%, rgba(0, 0, 0, .68));
-}
-
-.confirmation-detecting-overlay .confirmation-scanning {
-  position: static;
-  transform: none;
-}
 
 @media (max-width: 680px) {
   .studio-zone-detail-row {
@@ -5247,26 +5100,7 @@ button:hover {
   font-size: 10px;
   font-weight: 800;
 }
-.operator-camera video,
-.confirmation-live-camera video {
-  object-fit: cover;
-  width: 100%;
-  height: 100%;
-  min-height: 220px;
-  display: block;
-}
-.confirmation-live-camera {
-  width: min(560px, 100%);
-  height: 100%;
-  min-height: 420px;
-  position: relative;
-}
-.confirmation-live-camera button {
-  position: absolute;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-}
+
 
 @media (max-width: 760px) {
   .admin-hub-options { grid-template-columns: minmax(0, 1fr); }
@@ -5460,4 +5294,31 @@ button:hover {
   
 
   
+}
+
+
+/* Simplified operator PIN field */
+.operator-pin-panel.compact {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.operator-pin-field {
+  display: grid;
+  gap: 8px;
+  max-width: 280px;
+}
+
+.operator-pin-field > span {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, #94a3b8);
+}
+
+.operator-pin-panel.compact .pin-input {
+  width: 100%;
 }

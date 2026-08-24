@@ -4595,10 +4595,10 @@ margin-top: 10px;
 }
 
 .confirmation-dialog {
-  width: min(660px, calc(100vw - 40px));
-  max-height: calc(100dvh - 40px);
+  width: min(520px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
   border: 1px solid var(--confirm-line);
-  border-radius: 24px;
+  border-radius: 20px;
   background: var(--confirm-panel);
   position: relative;
   overflow: visible;
@@ -4608,8 +4608,8 @@ margin-top: 10px;
 
 .confirmation-close {
   z-index: 8;
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   color: var(--confirm-muted);
   border: 1px solid var(--confirm-line);
   background: color-mix(in srgb, var(--confirm-panel-strong) 92%, transparent);
@@ -4617,8 +4617,8 @@ margin-top: 10px;
   cursor: pointer;
   font-size: 20px;
   position: absolute;
-  top: 16px;
-  right: 16px;
+  top: 13px;
+  right: 13px;
   transition: color .15s ease, background .15s ease;
 }
 
@@ -4628,12 +4628,12 @@ margin-top: 10px;
 }
 
 .confirmation-pin-stage {
-  min-height: 520px;
-  padding: 54px 48px 44px;
+  min-height: 0;
+  padding: 34px 32px 30px;
   text-align: center;
   justify-items: center;
   align-content: center;
-  gap: 14px;
+  gap: 10px;
   display: grid;
   border-radius: inherit;
   background: radial-gradient(circle at 50% 14%, color-mix(in srgb, var(--confirm-accent) 10%, transparent), transparent 34%),
@@ -4641,11 +4641,11 @@ margin-top: 10px;
 }
 
 .confirmation-pin-icon {
-  width: 76px;
-  height: 76px;
-  margin-bottom: 4px;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 2px;
   border: 1px solid var(--confirm-line);
-  border-radius: 22px;
+  border-radius: 16px;
   background: var(--confirm-panel-strong);
   place-items: center;
   align-content: center;
@@ -4658,7 +4658,7 @@ margin-top: 10px;
   color: var(--confirm-accent);
   letter-spacing: .22em;
   line-height: .7;
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 900;
 }
 
@@ -4671,17 +4671,17 @@ margin-top: 10px;
 }
 
 .confirmation-pin-stage h2 {
-  max-width: 520px;
-  margin: 2px 0 12px;
+  max-width: 420px;
+  margin: 0 0 6px;
   color: var(--confirm-text);
   letter-spacing: -.042em;
-  font-size: clamp(30px, 5vw, 46px);
+  font-size: clamp(26px, 4vw, 34px);
   font-weight: 650;
   line-height: 1.05;
 }
 
 .confirmation-pin-machine {
-  width: min(500px, 100%);
+  width: min(420px, 100%);
   text-align: left;
   position: relative;
 }
@@ -4706,7 +4706,7 @@ margin-top: 10px;
 
 .machine-select-trigger {
   width: 100%;
-  height: 68px;
+  height: 58px;
   color: var(--confirm-text);
   border: 1px solid var(--confirm-line);
   background: var(--confirm-panel-strong);
@@ -4716,7 +4716,7 @@ margin-top: 10px;
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
-  padding: 28px 16px 11px;
+  padding: 25px 15px 9px;
   display: flex;
   font: inherit;
   font-size: 13px;
@@ -4808,9 +4808,9 @@ margin-top: 10px;
 
 .pin-input {
   box-sizing: border-box;
-  width: min(500px, 100%);
-  height: 72px;
-  padding: 0 14px 0 25px;
+  width: min(420px, 100%);
+  height: 56px;
+  padding: 0 18px;
   color: var(--confirm-text, var(--admin-text));
   caret-color: var(--confirm-accent, var(--admin-accent));
   border: 1px solid var(--confirm-line, var(--admin-line));
@@ -4819,7 +4819,7 @@ margin-top: 10px;
   background: var(--confirm-bg, var(--admin-field));
   text-align: center;
   letter-spacing: .34em;
-  font-size: clamp(24px, 4vw, 34px);
+  font-size: clamp(20px, 3vw, 26px);
   font-weight: 760;
   font-variant-numeric: tabular-nums;
   transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
@@ -4846,8 +4846,58 @@ margin-top: 10px;
   opacity: .5;
 }
 
+.pin-input-shell {
+  position: relative;
+  width: min(420px, 100%);
+}
+
+.pin-input-shell .pin-input {
+  width: 100%;
+  padding-right: 54px;
+  padding-left: 22px;
+}
+
+.pin-reveal-button {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  padding: 0;
+  color: var(--confirm-muted, var(--admin-muted));
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.pin-reveal-button:hover,
+.pin-reveal-button[aria-pressed="true"] {
+  color: var(--confirm-text, var(--admin-text));
+  background: color-mix(in srgb, var(--confirm-accent, var(--admin-accent)) 10%, transparent);
+  transform: translateY(-50%);
+}
+
+.pin-reveal-button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.pin-reveal-button svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .confirmation-pin-error {
-  width: min(500px, 100%);
+  width: min(420px, 100%);
   padding: 10px 12px;
   color: #ff858b;
   border: 1px solid #ff777e45;
@@ -4859,13 +4909,13 @@ margin-top: 10px;
 .confirmation-actions {
   grid-template-columns: repeat(2, minmax(160px, 1fr));
   gap: 10px;
-  width: min(500px, 100%);
+  width: min(420px, 100%);
   margin-top: 4px;
   display: grid;
 }
 
 .confirmation-actions button {
-  height: 48px;
+  height: 44px;
   color: var(--confirm-text);
   border: 1px solid var(--confirm-line);
   background: var(--confirm-panel-strong);
@@ -5665,12 +5715,12 @@ margin-top: 10px;
 }
 
 .confirmation-pin-stage {
-  min-height: 500px;
-  padding: 54px 18px 28px;
+  min-height: 0;
+  padding: 38px 18px 22px;
 }
 
 .confirmation-pin-stage h2 {
-  font-size: clamp(28px, 9vw, 40px);
+  font-size: clamp(25px, 8vw, 31px);
 }
 
 .confirmation-actions {

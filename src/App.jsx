@@ -82,11 +82,19 @@ function normalizePin(value) {
   return String(value || "").replace(/\D/g, "").slice(0, 6);
 }
 
-function PinInput({ value, onChange, disabled = false, autoFocus = false, ariaLabel = "6-digit PIN" }) {
-  return (
+function PinInput({
+  value,
+  onChange,
+  disabled = false,
+  autoFocus = false,
+  ariaLabel = "PIN",
+  revealed = false,
+  onToggleReveal,
+}) {
+  const input = (
     <input
       className="pin-input"
-      type="password"
+      type={revealed ? "text" : "password"}
       inputMode="numeric"
       autoComplete="off"
       pattern="[0-9]*"
@@ -98,6 +106,28 @@ function PinInput({ value, onChange, disabled = false, autoFocus = false, ariaLa
       autoFocus={autoFocus}
       aria-label={ariaLabel}
     />
+  );
+
+  if (!onToggleReveal) return input;
+
+  return (
+    <div className="pin-input-shell">
+      {input}
+      <button
+        className="pin-reveal-button"
+        type="button"
+        onClick={onToggleReveal}
+        disabled={disabled}
+        aria-label={revealed ? "Hide PIN" : "Show PIN"}
+        aria-pressed={revealed}
+      >
+        {revealed ? (
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 10.7a2 2 0 0 0 2.7 2.7M9.9 4.2A10.7 10.7 0 0 1 12 4c5.2 0 8.5 5 8.5 5a14.8 14.8 0 0 1-2.4 2.8M6.6 6.6A15 15 0 0 0 3.5 9s3.3 5 8.5 5c1 0 1.8-.2 2.6-.4" /></svg>
+        ) : (
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12s3.3-5 8.5-5 8.5 5 8.5 5-3.3 5-8.5 5-8.5-5-8.5-5Z" /><circle cx="12" cy="12" r="2.25" /></svg>
+        )}
+      </button>
+    </div>
   );
 }
 
@@ -169,8 +199,10 @@ function ConfirmationModal({ machine, machines = [], theme, onClose, onConfirmed
     : machineOptions[0]?.id || machine?.id || "";
   const [selectedMachineId, setSelectedMachineId] = useState(initialMachineId);
   const [pin, setPin] = useState("");
+  const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const machineOptionIds = machineOptions.map((item) => item.id).join("|");
 
   const selectedMachine = machineOptions.find((item) => item.id === selectedMachineId)
     || machine
@@ -181,16 +213,16 @@ function ConfirmationModal({ machine, machines = [], theme, onClose, onConfirmed
     const nextMachineId = machineOptions.some((item) => item.id === machine?.id)
       ? machine.id
       : machineOptions[0]?.id || machine?.id || "";
-    setSelectedMachineId(nextMachineId);
-    setPin("");
-    setError("");
-  }, [machine?.id, machines]);
+    setSelectedMachineId((current) => (
+      machineOptions.some((item) => item.id === current) ? current : nextMachineId
+    ));
+  }, [machine?.id, machineOptionIds]);
 
   async function confirmOperator(event) {
     event?.preventDefault?.();
     if (loading) return;
     if (pin.length !== 6) {
-      setError("Enter your 6-digit PIN.");
+      setError("Enter your PIN.");
       return;
     }
 
@@ -214,7 +246,6 @@ function ConfirmationModal({ machine, machines = [], theme, onClose, onConfirmed
       onClose();
     } catch (confirmError) {
       setError(confirmError.message);
-      setPin("");
     } finally {
       setLoading(false);
     }
@@ -234,7 +265,7 @@ function ConfirmationModal({ machine, machines = [], theme, onClose, onConfirmed
         <form className="confirmation-pin-stage" onSubmit={confirmOperator}>
           <div className="confirmation-pin-icon" aria-hidden="true"><span>•••</span><span>•••</span></div>
           <span className="confirmation-pin-kicker">Machine confirmation</span>
-          <h2>Enter your 6-digit PIN</h2>
+          <h2>Enter your PIN</h2>
 
           <div className="confirmation-pin-machine">
             <small>Machine</small>
@@ -244,6 +275,7 @@ function ConfirmationModal({ machine, machines = [], theme, onClose, onConfirmed
               onChange={(machineId) => {
                 setSelectedMachineId(machineId);
                 setPin("");
+                setShowPin(false);
                 setError("");
               }}
               disabled={loading}
@@ -256,7 +288,9 @@ function ConfirmationModal({ machine, machines = [], theme, onClose, onConfirmed
             onChange={setPin}
             disabled={loading}
             autoFocus
-            ariaLabel="6-digit PIN for machine confirmation"
+            ariaLabel="PIN for machine confirmation"
+            revealed={showPin}
+            onToggleReveal={() => setShowPin((current) => !current)}
           />
 
           {error && <div className="confirmation-pin-error">{safeText(error)}</div>}

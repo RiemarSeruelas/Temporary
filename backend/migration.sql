@@ -200,6 +200,9 @@ CREATE INDEX IF NOT EXISTS idx_machine_sources_topic
 CREATE INDEX IF NOT EXISTS idx_operator_registrations_date_shift
   ON machine_monitoring.operator_shift_registrations (shift_date, shift_code, machine_id);
 
+CREATE INDEX IF NOT EXISTS idx_confirmations_date_shift_machine
+  ON machine_monitoring.machine_check_confirmations (shift_date, shift_code, machine);
+
 CREATE INDEX IF NOT EXISTS idx_machine_receipts_window
   ON machine_monitoring.machine_data_receipts (machine_id, last_received_at);
 
@@ -218,4 +221,3 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_confirmations_registration_once
 -- Flexible field mapping + operator PIN confirmation
 -- source_fields stores any number of MQTT fields per point. The existing
 -- primary/secondary columns remain for backward compatibility.
-

@@ -330,9 +330,29 @@ function MatrixCell({ cell }) {
 }
 
 function excelCell(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (character) => ({
+  const text = String(value ?? "");
+  // Do not let operator or machine names become Excel formulas.
+  const safeValue = /^[=+\-@]/.test(text) ? `'${text}` : text;
+  return safeValue.replace(/[&<>"']/g, (character) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[character]));
+}
+
+function excelStatus(value) {
+  const status = String(value || "NO_DATA").toUpperCase();
+  if (status === "CONFIRMED") return { label: "Confirmed", className: "status-confirmed" };
+  if (status === "MISSED") return { label: "Not confirmed", className: "status-missed" };
+  if (status === "MACHINE_OFF") return { label: "Machine off", className: "status-machine-off" };
+  if (status === "FUTURE") return { label: "Future", className: "status-future" };
+  return { label: "No Data", className: "status-no-data" };
+}
+
+function excelDateTime(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function buildOperatorLogRows(matrix) {
@@ -351,7 +371,7 @@ function buildOperatorLogRows(matrix) {
         state: entry.state || "No Data",
         operator: entry.person_name || "No Data",
         machine: entry.machine_name || "No Data",
-        confirmed_at: entry.confirmed_at ? formatTime(entry.confirmed_at) : "No Data",
+        confirmed_at: entry.confirmed_at || null,
       }));
     });
   });
@@ -422,8 +442,92 @@ function OperatorAdminPage({ machines, password }) {
       return;
     }
     const headings = ["Date", "Shift", "Shift hours", "Status", "Operator", "Machine", "Confirmed at"];
-    const bodyRows = rows.map((row) => [row.date, row.shift, row.hours, row.state, row.operator, row.machine, row.confirmed_at]);
-    const html = `<!doctype html><html><head><meta charset="utf-8"></head><body><table border="1"><thead><tr>${headings.map((item) => `<th>${excelCell(item)}</th>`).join("")}</tr></thead><tbody>${bodyRows.map((row) => `<tr>${row.map((item) => `<td>${excelCell(item)}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`;
+    const counts = rows.reduce((summary, row) => {
+      const key = String(row.state || "NO_DATA").toUpperCase();
+      summary[key] = (summary[key] || 0) + 1;
+      return summary;
+    }, {});
+    const reportMachine = filters.machine
+      ? machineOptions.find((machine) => machine.id === filters.machine)?.name || filters.machine
+      : "All machines";
+    const generatedAt = excelDateTime(new Date());
+    const firstDataRow = 9;
+    const lastDataRow = firstDataRow + rows.length - 1;
+    const reportRows = rows.map((row) => {
+      const status = excelStatus(row.state);
+      return `<tr class="${status.className}">
+        <td class="date-cell">${excelCell(row.date)}</td>
+        <td>${excelCell(row.shift)}</td>
+        <td>${excelCell(row.hours)}</td>
+        <td class="status-cell">${excelCell(status.label)}</td>
+        <td>${excelCell(row.operator)}</td>
+        <td>${excelCell(row.machine)}</td>
+        <td>${excelCell(excelDateTime(row.confirmed_at))}</td>
+      </tr>`;
+    }).join("");
+    const html = `<!doctype html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+  <meta charset="utf-8">
+  <!--[if gte mso 9]><xml>
+    <x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+      <x:Name>Operator Logs</x:Name>
+      <x:WorksheetOptions>
+        <x:Selected/><x:FreezePanes/><x:FrozenNoSplit/>
+        <x:SplitHorizontal>${firstDataRow - 1}</x:SplitHorizontal>
+        <x:TopRowBottomPane>${firstDataRow - 1}</x:TopRowBottomPane>
+        <x:ActivePane>2</x:ActivePane>
+        <x:FitToPage/><x:Print><x:ValidPrinterInfo/><x:HorizontalResolution>600</x:HorizontalResolution><x:VerticalResolution>600</x:VerticalResolution></x:Print>
+      </x:WorksheetOptions>
+    </x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook>
+  </xml><![endif]-->
+  <style>
+    @page { mso-page-orientation: landscape; margin: .35in .35in .5in .35in; }
+    body { font-family: Aptos, Calibri, Arial, sans-serif; color: #172033; }
+    table { border-collapse: collapse; table-layout: fixed; }
+    col.date { width: 92px; } col.shift { width: 112px; } col.hours { width: 118px; }
+    col.status { width: 112px; } col.operator { width: 178px; } col.machine { width: 178px; } col.confirmed { width: 142px; }
+    td, th { border: 1px solid #d8e0eb; padding: 7px 9px; font-size: 11pt; vertical-align: middle; }
+    .report-title { border: 0; background: #111c2d; color: #fff; font-size: 20pt; font-weight: 700; padding: 15px 14px 7px; }
+    .report-subtitle { border: 0; background: #111c2d; color: #b8c7dd; font-size: 10pt; padding: 0 14px 14px; }
+    .meta-label { background: #eaf0f8; color: #5d6d83; font-size: 9pt; font-weight: 700; text-transform: uppercase; border-color: #cbd6e4; }
+    .meta-value { background: #f7f9fc; color: #172033; font-weight: 600; border-color: #cbd6e4; }
+    .spacer td { border: 0; height: 10px; padding: 0; }
+    .summary-label td { color: #5d6d83; background: #f2f5f9; font-size: 9pt; font-weight: 700; text-align: center; text-transform: uppercase; }
+    .summary-value td { font-size: 15pt; font-weight: 700; text-align: center; }
+    .summary-value .confirmed { color: #16794c; background: #dcfce7; }
+    .summary-value .missed { color: #b4232f; background: #fee2e2; }
+    .summary-value .machine-off { color: #9a5b08; background: #fef3c7; }
+    .summary-value .future { color: #40566f; background: #e8eef5; }
+    .summary-value .no-data { color: #667085; background: #f2f4f7; }
+    thead th { background: #243a59; color: #fff; border-color: #38506f; font-size: 10pt; font-weight: 700; text-align: left; }
+    tbody td { background: #fff; }
+    tbody tr:nth-child(even) td { background: #f8fafc; }
+    tbody .status-cell { font-weight: 700; text-align: center; }
+    tbody .status-confirmed .status-cell { background: #dcfce7; color: #16794c; }
+    tbody .status-missed .status-cell { background: #fee2e2; color: #b4232f; }
+    tbody .status-machine-off .status-cell { background: #fef3c7; color: #9a5b08; }
+    tbody .status-future .status-cell { background: #e8eef5; color: #40566f; }
+    tbody .status-no-data .status-cell { background: #f2f4f7; color: #667085; }
+    .date-cell { mso-number-format: "yyyy\\-mm\\-dd"; }
+    .report-footnote { border: 0; color: #667085; font-size: 9pt; padding: 10px 0 0; }
+  </style>
+</head>
+<body>
+  <table>
+    <col class="date"><col class="shift"><col class="hours"><col class="status"><col class="operator"><col class="machine"><col class="confirmed">
+    <tr><td class="report-title" colspan="7">Mespack Operator Confirmation Report</td></tr>
+    <tr><td class="report-subtitle" colspan="7">Shift registration and machine-check confirmation history</td></tr>
+    <tr><td class="meta-label">Report period</td><td class="meta-value" colspan="2">${excelCell(filters.date_from)} to ${excelCell(filters.date_to)}</td><td class="meta-label">Machine</td><td class="meta-value">${excelCell(reportMachine)}</td><td class="meta-label">Generated</td><td class="meta-value">${excelCell(generatedAt)}</td></tr>
+    <tr class="spacer"><td colspan="7"></td></tr>
+    <tr class="summary-label"><td>Total rows</td><td>Confirmed</td><td>Not confirmed</td><td>Machine off</td><td>Future</td><td>No Data</td><td>Coverage</td></tr>
+    <tr class="summary-value"><td>${rows.length}</td><td class="confirmed">${counts.CONFIRMED || 0}</td><td class="missed">${counts.MISSED || 0}</td><td class="machine-off">${counts.MACHINE_OFF || 0}</td><td class="future">${counts.FUTURE || 0}</td><td class="no-data">${counts.NO_DATA || 0}</td><td>${counts.CONFIRMED || 0} / ${rows.length}</td></tr>
+    <tr class="spacer"><td colspan="7"></td></tr>
+    <thead><tr>${headings.map((item) => `<th>${excelCell(item)}</th>`).join("")}</tr></thead>
+    <tbody>${reportRows}</tbody>
+    <tr><td class="report-footnote" colspan="7">Status colors: green = confirmed, red = not confirmed, amber = machine off, gray = future or no data. Rows exported: ${rows.length}. Data range: ${firstDataRow}-${lastDataRow}.</td></tr>
+  </table>
+</body></html>`;
     const blob = new Blob(["\ufeff", html], { type: "application/vnd.ms-excel;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -482,7 +586,7 @@ function OperatorAdminPage({ machines, password }) {
       <header className="operator-admin-heading">
         <div><span>Operator confirmation</span><h1>Registration and logs</h1></div>
         <div className="operator-heading-actions">
-          <button className="operator-download-button" type="button" onClick={downloadLogsExcel}>Download Excel</button>
+          <button className="operator-download-button" type="button" onClick={downloadLogsExcel}>Download Excel report</button>
           <div className="operator-tabs" role="tablist">
             <button className={tab === "registration" ? "active" : ""} onClick={() => selectTab("registration")}>Registration</button>
             <button className={tab === "logs" ? "active" : ""} onClick={() => selectTab("logs")}>Logs</button>

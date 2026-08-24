@@ -504,6 +504,20 @@ function manilaDateKey(date = new Date()) {
   return `${p.year}-${pad2(p.month)}-${pad2(p.day)}`;
 }
 
+// node-postgres can return a DATE column as either YYYY-MM-DD text or a Date,
+// depending on its parser configuration. Keep report matching independent of
+// that setting so valid registrations never disappear as "No Data".
+function postgresDateKey(value) {
+  if (!value) return "";
+
+  const directMatch = String(value).match(/^(\d{4}-\d{2}-\d{2})/);
+  if (directMatch) return directMatch[1];
+
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return `${parsed.getUTCFullYear()}-${pad2(parsed.getUTCMonth() + 1)}-${pad2(parsed.getUTCDate())}`;
+}
+
 function dateKeyToParts(dateKey) {
   const [year, month, day] = String(dateKey).split("-").map(Number);
   return { year, month, day };
@@ -994,10 +1008,12 @@ function buildConfirmationMatrix({ registrations, confirmations, receipts, dates
       const windowStartMs = new Date(window.window_start).getTime();
       const isFuture = date > today || nowMs < windowStartMs;
       const assignments = registrations.filter((registration) => (
-        String(registration.shift_date).slice(0, 10) === date
+        postgresDateKey(registration.shift_date_key || registration.shift_date) === date
         && registration.shift_code === shiftCode
-        && registration.is_active !== false
       ));
+
+      // is_active only controls whether a PIN may be used right now. Historical
+      // registrations (and their confirmations) must remain visible in Logs.
 
       if (!assignments.length) {
         shifts[shiftCode] = { state: isFuture ? "FUTURE" : "NO_DATA", entries: [] };
@@ -1023,7 +1039,7 @@ function buildConfirmationMatrix({ registrations, confirmations, receipts, dates
             && Number(confirmation.person_id) === Number(registration.person_id)
             && String(confirmation.machine || "") === String(registration.machine_id)
             && String(confirmation.shift_code || "") === shiftCode
-            && String(confirmation.shift_date || "").slice(0, 10) === date
+            && postgresDateKey(confirmation.shift_date_key || confirmation.shift_date) === date
           )
         ));
 
@@ -1064,7 +1080,7 @@ async function loadOperatorOverview({ date_from, date_to, machine } = {}) {
   const [registrationsResult, confirmationsResult, receiptsResult] = await Promise.all([
     pgPool.query(
       `
-        SELECT *
+        SELECT *, to_char(shift_date, 'YYYY-MM-DD') AS shift_date_key
         FROM ${operatorRegistrationsTable}
         WHERE shift_date BETWEEN $1::date AND $2::date
           AND ($3::text IS NULL OR machine_id = $3::text)
@@ -1074,10 +1090,10 @@ async function loadOperatorOverview({ date_from, date_to, machine } = {}) {
     ),
     pgPool.query(
       `
-        SELECT *
+        SELECT *, to_char(shift_date, 'YYYY-MM-DD') AS shift_date_key
         FROM ${confirmationsTable}
         WHERE shift_date BETWEEN $1::date AND $2::date
-          AND confirmation_status IN ('confirmed', 'verified')
+          AND LOWER(BTRIM(COALESCE(confirmation_status, 'confirmed'))) IN ('confirmed', 'verified')
           AND ($3::text IS NULL OR machine = $3::text)
         ORDER BY created_at DESC
       `,
@@ -1102,7 +1118,7 @@ async function loadOperatorOverview({ date_from, date_to, machine } = {}) {
     machine_id: registration.machine_id,
     machine_name: registration.machine_name,
     shift_code: registration.shift_code,
-    shift_date: registration.shift_date,
+    shift_date: postgresDateKey(registration.shift_date_key || registration.shift_date),
     is_active: registration.is_active,
     registered_at: registration.registered_at,
   }));
@@ -1335,6 +1351,10 @@ async function ensureTables() {
   await pgPool.query(`
     CREATE INDEX IF NOT EXISTS idx_operator_registrations_date_shift
       ON ${operatorRegistrationsTable} (shift_date, shift_code, machine_id)
+  `);
+  await pgPool.query(`
+    CREATE INDEX IF NOT EXISTS idx_confirmations_date_shift_machine
+      ON ${confirmationsTable} (shift_date, shift_code, machine)
   `);
   await pgPool.query(`
     CREATE INDEX IF NOT EXISTS idx_machine_receipts_window

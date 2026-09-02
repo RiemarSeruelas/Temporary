@@ -46,7 +46,11 @@ function formatTime(value) {
   if (!value) return "No data";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "No data";
-  return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return date.toLocaleTimeString(undefined, {
+    timeZone: "Asia/Manila",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function safeText(value) {
@@ -338,21 +342,22 @@ function excelCell(value) {
   }[character]));
 }
 
-function excelStatus(value) {
-  const status = String(value || "NO_DATA").toUpperCase();
-  if (status === "CONFIRMED") return { label: "Confirmed", className: "status-confirmed" };
-  if (status === "MISSED") return { label: "Not confirmed", className: "status-missed" };
-  if (status === "MACHINE_OFF") return { label: "Machine off", className: "status-machine-off" };
-  if (status === "FUTURE") return { label: "Future", className: "status-future" };
-  return { label: "No Data", className: "status-no-data" };
-}
-
 function excelDateTime(value) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  const pad = (part) => String(part).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(date).map((part) => [part.type, part.value])
+  );
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 function buildOperatorLogRows(matrix) {
@@ -376,6 +381,60 @@ function buildOperatorLogRows(matrix) {
     });
   });
   return rows;
+}
+
+function excelXmlCell(value, styleId, { mergeAcross = 0, type = "String" } = {}) {
+  const merge = mergeAcross > 0 ? ` ss:MergeAcross="${mergeAcross}"` : "";
+  const cellValue = excelCell(value).replace(/\r?\n/g, "&#10;");
+  return `<Cell ss:StyleID="${styleId}"${merge}><Data ss:Type="${type}" xml:space="preserve">${cellValue}</Data></Cell>`;
+}
+
+function excelLogCell(cell) {
+  if (!cell?.entries?.length) {
+    const isFuture = cell?.state === "FUTURE";
+    return {
+      entryCount: 1,
+      styleId: isFuture ? "EntryFuture" : "EntryNoData",
+      value: isFuture ? "—" : "No Data",
+    };
+  }
+
+  const normalizedStates = cell.entries.map((entry) => String(entry.state || "NO_DATA").toUpperCase());
+  const singleState = normalizedStates.every((state) => state === normalizedStates[0])
+    ? normalizedStates[0]
+    : "MIXED";
+  const styleIds = {
+    CONFIRMED: "EntryConfirmed",
+    MISSED: "EntryMissed",
+    MACHINE_OFF: "EntryMachineOff",
+    FUTURE: "EntryFuture",
+    NO_DATA: "EntryNoData",
+    MIXED: "EntryNeutral",
+  };
+  const bullets = {
+    CONFIRMED: "●",
+    MISSED: "●",
+    MACHINE_OFF: "●",
+    FUTURE: "○",
+    NO_DATA: "○",
+  };
+  const value = cell.entries.map((entry) => {
+    const state = String(entry.state || "NO_DATA").toUpperCase();
+    const statusDetail = entry.state === "CONFIRMED"
+      ? `Confirmed ${formatTime(entry.confirmed_at)}`
+      : entry.state === "MISSED"
+        ? "Not confirmed"
+        : entry.state === "MACHINE_OFF"
+          ? "Machine off"
+          : "Future";
+    return `${bullets[state] || "○"} ${entry.person_name || "No Data"}\n${entry.machine_name || "No Data"}\n${statusDetail}`;
+  }).join("\n\n");
+
+  return {
+    entryCount: cell.entries.length,
+    styleId: styleIds[singleState] || "EntryNeutral",
+    value,
+  };
 }
 
 function OperatorAdminPage({ machines, password }) {
@@ -436,12 +495,12 @@ function OperatorAdminPage({ machines, password }) {
   }
 
   function downloadLogsExcel() {
-    const rows = buildOperatorLogRows(overview.matrix);
-    if (!rows.length) {
+    const reportDays = [...(overview.matrix || [])].reverse();
+    if (!reportDays.length) {
       setError("No Data to export.");
       return;
     }
-    const headings = ["Date", "Shift", "Shift hours", "Status", "Operator", "Machine", "Confirmed at"];
+    const rows = buildOperatorLogRows(overview.matrix);
     const counts = rows.reduce((summary, row) => {
       const key = String(row.state || "NO_DATA").toUpperCase();
       summary[key] = (summary[key] || 0) + 1;
@@ -451,84 +510,78 @@ function OperatorAdminPage({ machines, password }) {
       ? machineOptions.find((machine) => machine.id === filters.machine)?.name || filters.machine
       : "All machines";
     const generatedAt = excelDateTime(new Date());
-    const firstDataRow = 9;
-    const lastDataRow = firstDataRow + rows.length - 1;
-    const reportRows = rows.map((row) => {
-      const status = excelStatus(row.state);
-      return `<tr class="${status.className}">
-        <td class="date-cell">${excelCell(row.date)}</td>
-        <td>${excelCell(row.shift)}</td>
-        <td>${excelCell(row.hours)}</td>
-        <td class="status-cell">${excelCell(status.label)}</td>
-        <td>${excelCell(row.operator)}</td>
-        <td>${excelCell(row.machine)}</td>
-        <td>${excelCell(excelDateTime(row.confirmed_at))}</td>
-      </tr>`;
+    const firstDataRow = 10;
+    const lastDataRow = firstDataRow + reportDays.length - 1;
+    const reportRows = reportDays.map((day) => {
+      const dateNote = day.date === today ? "Today" : day.is_future ? "Future" : "";
+      const shiftCells = SHIFT_OPTIONS.map((shift) => excelLogCell(day.shifts?.[shift.value]));
+      const tallestCell = Math.max(1, ...shiftCells.map((cell) => cell.entryCount));
+      const rowHeight = 78 + Math.max(0, tallestCell - 1) * 64;
+      const dateValue = `${formatDate(day.date)}${dateNote ? ` · ${dateNote}` : ""}`;
+      return `<Row ss:AutoFitHeight="0" ss:Height="${rowHeight}">
+        ${excelXmlCell(dateValue, "DateCell")}
+        ${shiftCells.map((cell) => excelXmlCell(cell.value, cell.styleId)).join("")}
+      </Row>`;
     }).join("");
-    const html = `<!doctype html>
-<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-  <meta charset="utf-8">
-  <!--[if gte mso 9]><xml>
-    <x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
-      <x:Name>Operator Logs</x:Name>
-      <x:WorksheetOptions>
-        <x:Selected/><x:FreezePanes/><x:FrozenNoSplit/>
-        <x:SplitHorizontal>${firstDataRow - 1}</x:SplitHorizontal>
-        <x:TopRowBottomPane>${firstDataRow - 1}</x:TopRowBottomPane>
-        <x:ActivePane>2</x:ActivePane>
-        <x:FitToPage/><x:Print><x:ValidPrinterInfo/><x:HorizontalResolution>600</x:HorizontalResolution><x:VerticalResolution>600</x:VerticalResolution></x:Print>
-      </x:WorksheetOptions>
-    </x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook>
-  </xml><![endif]-->
-  <style>
-    @page { mso-page-orientation: landscape; margin: .35in .35in .5in .35in; }
-    body { font-family: Aptos, Calibri, Arial, sans-serif; color: #172033; }
-    table { border-collapse: collapse; table-layout: fixed; }
-    col.date { width: 92px; } col.shift { width: 112px; } col.hours { width: 118px; }
-    col.status { width: 112px; } col.operator { width: 178px; } col.machine { width: 178px; } col.confirmed { width: 142px; }
-    td, th { border: 1px solid #d8e0eb; padding: 7px 9px; font-size: 11pt; vertical-align: middle; }
-    .report-title { border: 0; background: #111c2d; color: #fff; font-size: 20pt; font-weight: 700; padding: 15px 14px 7px; }
-    .report-subtitle { border: 0; background: #111c2d; color: #b8c7dd; font-size: 10pt; padding: 0 14px 14px; }
-    .meta-label { background: #eaf0f8; color: #5d6d83; font-size: 9pt; font-weight: 700; text-transform: uppercase; border-color: #cbd6e4; }
-    .meta-value { background: #f7f9fc; color: #172033; font-weight: 600; border-color: #cbd6e4; }
-    .spacer td { border: 0; height: 10px; padding: 0; }
-    .summary-label td { color: #5d6d83; background: #f2f5f9; font-size: 9pt; font-weight: 700; text-align: center; text-transform: uppercase; }
-    .summary-value td { font-size: 15pt; font-weight: 700; text-align: center; }
-    .summary-value .confirmed { color: #16794c; background: #dcfce7; }
-    .summary-value .missed { color: #b4232f; background: #fee2e2; }
-    .summary-value .machine-off { color: #9a5b08; background: #fef3c7; }
-    .summary-value .future { color: #40566f; background: #e8eef5; }
-    .summary-value .no-data { color: #667085; background: #f2f4f7; }
-    thead th { background: #243a59; color: #fff; border-color: #38506f; font-size: 10pt; font-weight: 700; text-align: left; }
-    tbody td { background: #fff; }
-    tbody tr:nth-child(even) td { background: #f8fafc; }
-    tbody .status-cell { font-weight: 700; text-align: center; }
-    tbody .status-confirmed .status-cell { background: #dcfce7; color: #16794c; }
-    tbody .status-missed .status-cell { background: #fee2e2; color: #b4232f; }
-    tbody .status-machine-off .status-cell { background: #fef3c7; color: #9a5b08; }
-    tbody .status-future .status-cell { background: #e8eef5; color: #40566f; }
-    tbody .status-no-data .status-cell { background: #f2f4f7; color: #667085; }
-    .date-cell { mso-number-format: "yyyy\\-mm\\-dd"; }
-    .report-footnote { border: 0; color: #667085; font-size: 9pt; padding: 10px 0 0; }
-  </style>
-</head>
-<body>
-  <table>
-    <col class="date"><col class="shift"><col class="hours"><col class="status"><col class="operator"><col class="machine"><col class="confirmed">
-    <tr><td class="report-title" colspan="7">Mespack Operator Confirmation Report</td></tr>
-    <tr><td class="report-subtitle" colspan="7">Shift registration and machine-check confirmation history</td></tr>
-    <tr><td class="meta-label">Report period</td><td class="meta-value" colspan="2">${excelCell(filters.date_from)} to ${excelCell(filters.date_to)}</td><td class="meta-label">Machine</td><td class="meta-value">${excelCell(reportMachine)}</td><td class="meta-label">Generated</td><td class="meta-value">${excelCell(generatedAt)}</td></tr>
-    <tr class="spacer"><td colspan="7"></td></tr>
-    <tr class="summary-label"><td>Total rows</td><td>Confirmed</td><td>Not confirmed</td><td>Machine off</td><td>Future</td><td>No Data</td><td>Coverage</td></tr>
-    <tr class="summary-value"><td>${rows.length}</td><td class="confirmed">${counts.CONFIRMED || 0}</td><td class="missed">${counts.MISSED || 0}</td><td class="machine-off">${counts.MACHINE_OFF || 0}</td><td class="future">${counts.FUTURE || 0}</td><td class="no-data">${counts.NO_DATA || 0}</td><td>${counts.CONFIRMED || 0} / ${rows.length}</td></tr>
-    <tr class="spacer"><td colspan="7"></td></tr>
-    <thead><tr>${headings.map((item) => `<th>${excelCell(item)}</th>`).join("")}</tr></thead>
-    <tbody>${reportRows}</tbody>
-    <tr><td class="report-footnote" colspan="7">Status colors: green = confirmed, red = not confirmed, amber = machine off, gray = future or no data. Rows exported: ${rows.length}. Data range: ${firstDataRow}-${lastDataRow}.</td></tr>
-  </table>
-</body></html>`;
-    const blob = new Blob(["\ufeff", html], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const styles = `
+      <Style ss:ID="Default" ss:Name="Normal"><Alignment ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#172033"/></Style>
+      <Style ss:ID="Title"><Alignment ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="18" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#111C2D" ss:Pattern="Solid"/></Style>
+      <Style ss:ID="Subtitle"><Alignment ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#AEBBD0"/><Interior ss:Color="#111C2D" ss:Pattern="Solid"/></Style>
+      <Style ss:ID="MetaLabel"><Alignment ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#5D6D83"/><Interior ss:Color="#E8EDF4" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CAD4E0"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CAD4E0"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CAD4E0"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CAD4E0"/></Borders></Style>
+      <Style ss:ID="MetaValue"><Alignment ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#172033"/><Interior ss:Color="#F7F9FC" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CAD4E0"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CAD4E0"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CAD4E0"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CAD4E0"/></Borders></Style>
+      <Style ss:ID="Spacer"><Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/></Style>
+      <Style ss:ID="SummaryLabel"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#5D6D83"/><Interior ss:Color="#EDF1F6" ss:Pattern="Solid"/></Style>
+      <Style ss:ID="SummaryConfirmed"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="15" ss:Bold="1" ss:Color="#16794C"/><Interior ss:Color="#DCFCE7" ss:Pattern="Solid"/></Style>
+      <Style ss:ID="SummaryMissed"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="15" ss:Bold="1" ss:Color="#B4232F"/><Interior ss:Color="#FEE2E2" ss:Pattern="Solid"/></Style>
+      <Style ss:ID="SummaryMachineOff"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="15" ss:Bold="1" ss:Color="#9A5B08"/><Interior ss:Color="#FEF3C7" ss:Pattern="Solid"/></Style>
+      <Style ss:ID="SummaryNoData"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="15" ss:Bold="1" ss:Color="#667085"/><Interior ss:Color="#EEF2F6" ss:Pattern="Solid"/></Style>
+      <Style ss:ID="Legend"><Alignment ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#5D6D83"/><Interior ss:Color="#F7F9FC" ss:Pattern="Solid"/></Style>
+      <Style ss:ID="MatrixHeader"><Alignment ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#172333" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#324357"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#324357"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#324357"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#324357"/></Borders></Style>
+      <Style ss:ID="DateCell"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#172333" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#324357"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#324357"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#324357"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#324357"/></Borders></Style>
+      <Style ss:ID="EntryNeutral"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="9" ss:Color="#172033"/><Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CED8E4"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#93A1AE"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CED8E4"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CED8E4"/></Borders></Style>
+      <Style ss:ID="EntryConfirmed"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="9" ss:Color="#16794C"/><Interior ss:Color="#EFFAF4" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#B8E6CC"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="3" ss:Color="#59D68D"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#B8E6CC"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#B8E6CC"/></Borders></Style>
+      <Style ss:ID="EntryMissed"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="9" ss:Color="#B4232F"/><Interior ss:Color="#FFF1F2" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#F3C3C7"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="3" ss:Color="#FF6F76"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#F3C3C7"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#F3C3C7"/></Borders></Style>
+      <Style ss:ID="EntryMachineOff"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="9" ss:Color="#9A5B08"/><Interior ss:Color="#FFF8E7" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E9D3A8"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="3" ss:Color="#D29A45"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E9D3A8"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E9D3A8"/></Borders></Style>
+      <Style ss:ID="EntryFuture"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="13" ss:Color="#8996A5"/><Interior ss:Color="#F2F5F8" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D5DDE6"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D5DDE6"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D5DDE6"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D5DDE6"/></Borders></Style>
+      <Style ss:ID="EntryNoData"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="9" ss:Color="#8996A5"/><Interior ss:Color="#EDF1F5" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D5DDE6"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D5DDE6"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D5DDE6"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D5DDE6"/></Borders></Style>
+      <Style ss:ID="Footnote"><Alignment ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="9" ss:Color="#667085"/></Style>`;
+    const expandedRowCount = reportDays.length + 10;
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office"><Title>Mespack Operator Confirmation Report</Title><Created>${new Date().toISOString()}</Created></DocumentProperties>
+  <Styles>${styles}</Styles>
+  <Worksheet ss:Name="Operator Logs">
+    <Table ss:ExpandedColumnCount="4" ss:ExpandedRowCount="${expandedRowCount}" x:FullColumns="1" x:FullRows="1">
+      <Column ss:AutoFitWidth="0" ss:Width="75"/>
+      <Column ss:AutoFitWidth="0" ss:Width="103"/>
+      <Column ss:AutoFitWidth="0" ss:Width="103"/>
+      <Column ss:AutoFitWidth="0" ss:Width="103"/>
+      <Row ss:AutoFitHeight="0" ss:Height="45">${excelXmlCell("Mespack Operator Confirmation Report", "Title", { mergeAcross: 3 })}</Row>
+      <Row ss:AutoFitHeight="0" ss:Height="30">${excelXmlCell("The same date-by-shift view shown in Operator Logs", "Subtitle", { mergeAcross: 3 })}</Row>
+      <Row ss:AutoFitHeight="0" ss:Height="34">${excelXmlCell("REPORT PERIOD", "MetaLabel")}${excelXmlCell(`${filters.date_from} to ${filters.date_to}`, "MetaValue")}${excelXmlCell("MACHINE", "MetaLabel")}${excelXmlCell(reportMachine, "MetaValue")}</Row>
+      <Row ss:AutoFitHeight="0" ss:Height="34">${excelXmlCell("GENERATED", "MetaLabel")}${excelXmlCell(generatedAt, "MetaValue")}${excelXmlCell("TIMEZONE", "MetaLabel")}${excelXmlCell("Asia/Manila (UTC+8)", "MetaValue")}</Row>
+      <Row ss:AutoFitHeight="0" ss:Height="9">${excelXmlCell("", "Spacer", { mergeAcross: 3 })}</Row>
+      <Row ss:AutoFitHeight="0" ss:Height="30">${["Confirmed", "Not confirmed", "Machine off", "Future / No Data"].map((label) => excelXmlCell(label, "SummaryLabel")).join("")}</Row>
+      <Row ss:AutoFitHeight="0" ss:Height="28">${excelXmlCell(counts.CONFIRMED || 0, "SummaryConfirmed", { type: "Number" })}${excelXmlCell(counts.MISSED || 0, "SummaryMissed", { type: "Number" })}${excelXmlCell(counts.MACHINE_OFF || 0, "SummaryMachineOff", { type: "Number" })}${excelXmlCell((counts.FUTURE || 0) + (counts.NO_DATA || 0), "SummaryNoData", { type: "Number" })}</Row>
+      <Row ss:AutoFitHeight="0" ss:Height="25">${excelXmlCell("Legend:  ● Confirmed     ● Not confirmed     ● Machine off     ○ Future / No Data", "Legend", { mergeAcross: 3 })}</Row>
+      <Row ss:AutoFitHeight="0" ss:Height="36">${excelXmlCell("Date", "MatrixHeader")}${SHIFT_OPTIONS.map((shift) => excelXmlCell(`${shift.label} · ${shift.hours}`, "MatrixHeader")).join("")}</Row>
+      ${reportRows}
+      <Row ss:AutoFitHeight="0" ss:Height="24">${excelXmlCell(`Confirmation times use Asia/Manila. Dates exported: ${reportDays.length}. Matrix rows: ${firstDataRow}-${lastDataRow}.`, "Footnote", { mergeAcross: 3 })}</Row>
+    </Table>
+    <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+      <Selected/><FreezePanes/><FrozenNoSplit/>
+      <SplitHorizontal>${firstDataRow - 1}</SplitHorizontal><TopRowBottomPane>${firstDataRow - 1}</TopRowBottomPane>
+      <SplitVertical>1</SplitVertical><LeftColumnRightPane>1</LeftColumnRightPane><ActivePane>0</ActivePane>
+      <DoNotDisplayGridlines/><FitToPage/><PageSetup><Layout x:Orientation="Landscape"/><PageMargins x:Bottom="0.35" x:Left="0.3" x:Right="0.3" x:Top="0.35"/></PageSetup>
+      <Print><FitWidth>1</FitWidth><ValidPrinterInfo/></Print><ProtectObjects>False</ProtectObjects><ProtectScenarios>False</ProtectScenarios>
+    </WorksheetOptions>
+  </Worksheet>
+</Workbook>`;
+    const blob = new Blob(["\ufeff", xml], { type: "application/vnd.ms-excel;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;

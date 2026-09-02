@@ -14,14 +14,14 @@ CREATE TABLE IF NOT EXISTS machine_monitoring.machine_check_confirmations (
   machine_name TEXT,
   shift_code TEXT,
   shift_date DATE,
-  verification_window_start TIMESTAMP,
-  verification_window_end TIMESTAMP,
+  verification_window_start TIMESTAMPTZ,
+  verification_window_end TIMESTAMPTZ,
   machine_required BOOLEAN DEFAULT TRUE,
   confirmation_status TEXT DEFAULT 'confirmed',
   registration_id BIGINT,
   machine_activity_reason TEXT,
   verification_method TEXT NOT NULL DEFAULT 'registration_pin',
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 ALTER TABLE machine_monitoring.machine_check_confirmations
@@ -32,16 +32,47 @@ ALTER TABLE machine_monitoring.machine_check_confirmations
   ADD COLUMN IF NOT EXISTS machine_name TEXT,
   ADD COLUMN IF NOT EXISTS shift_code TEXT,
   ADD COLUMN IF NOT EXISTS shift_date DATE,
-  ADD COLUMN IF NOT EXISTS verification_window_start TIMESTAMP,
-  ADD COLUMN IF NOT EXISTS verification_window_end TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS verification_window_start TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS verification_window_end TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS machine_required BOOLEAN DEFAULT TRUE,
   ADD COLUMN IF NOT EXISTS confirmation_status TEXT DEFAULT 'confirmed',
   ADD COLUMN IF NOT EXISTS registration_id BIGINT,
   ADD COLUMN IF NOT EXISTS machine_activity_reason TEXT,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
   ADD COLUMN IF NOT EXISTS verification_method TEXT NOT NULL DEFAULT 'registration_pin';
 
 ALTER TABLE machine_monitoring.machine_check_confirmations
   ALTER COLUMN verification_method SET DEFAULT 'registration_pin';
+
+-- Older app versions stored UTC values in timezone-less columns. Convert each
+-- one only when needed; existing 07:00 values then display as 15:00 Manila.
+DO $$
+DECLARE
+  confirmation_timestamp_column TEXT;
+BEGIN
+  FOREACH confirmation_timestamp_column IN ARRAY ARRAY[
+    'verification_window_start',
+    'verification_window_end',
+    'created_at'
+  ]
+  LOOP
+    IF EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'machine_monitoring'
+        AND table_name = 'machine_check_confirmations'
+        AND column_name = confirmation_timestamp_column
+        AND data_type = 'timestamp without time zone'
+    ) THEN
+      EXECUTE format(
+        'ALTER TABLE machine_monitoring.machine_check_confirmations ALTER COLUMN %I TYPE TIMESTAMPTZ USING %I AT TIME ZONE %L',
+        confirmation_timestamp_column,
+        confirmation_timestamp_column,
+        'UTC'
+      );
+    END IF;
+  END LOOP;
+END $$;
 
 CREATE TABLE IF NOT EXISTS machine_monitoring.machine_configurations (
   id TEXT PRIMARY KEY,

@@ -926,7 +926,7 @@ async function insertConfirmationLog({ registration, machine, machine_name, veri
       )
       VALUES (
         $1, $2, NULL, NULL, 'operator', $3, $4, $5, $6::date,
-        $7::timestamp, $8::timestamp, $9, $10, $11, $12, 'registration_pin'
+        $7::timestamptz, $8::timestamptz, $9, $10, $11, $12, 'registration_pin'
       )
       ON CONFLICT (registration_id) WHERE registration_id IS NOT NULL AND confirmation_status = 'confirmed'
       DO UPDATE SET
@@ -1152,14 +1152,14 @@ async function ensureTables() {
       machine_name TEXT,
       shift_code TEXT,
       shift_date DATE,
-      verification_window_start TIMESTAMP,
-      verification_window_end TIMESTAMP,
+      verification_window_start TIMESTAMPTZ,
+      verification_window_end TIMESTAMPTZ,
       machine_required BOOLEAN DEFAULT TRUE,
       confirmation_status TEXT DEFAULT 'confirmed',
       registration_id BIGINT,
       machine_activity_reason TEXT,
       verification_method TEXT NOT NULL DEFAULT 'registration_pin',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -1337,15 +1337,43 @@ async function ensureTables() {
     ["person_id", "INTEGER"], ["person_name", "TEXT"], ["employee_id", "TEXT"],
     ["department", "TEXT"], ["role", "TEXT"], ["machine", "TEXT"],
     ["machine_name", "TEXT"], ["shift_code", "TEXT"], ["shift_date", "DATE"],
-    ["verification_window_start", "TIMESTAMP"], ["verification_window_end", "TIMESTAMP"],
+    ["verification_window_start", "TIMESTAMPTZ"], ["verification_window_end", "TIMESTAMPTZ"],
     ["machine_required", "BOOLEAN DEFAULT TRUE"],
     ["confirmation_status", "TEXT DEFAULT 'confirmed'"], ["registration_id", "BIGINT"],
     ["machine_activity_reason", "TEXT"],
     ["verification_method", "TEXT NOT NULL DEFAULT 'registration_pin'"],
-    ["created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"]
+    ["created_at", "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP"]
   ];
   for (const [col, typ] of confirmationColumns) {
     await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS ${col} ${typ}`);
+  }
+
+  // Older revisions stored UTC wall-clock values without timezone metadata.
+  // Convert these columns once so 07:00 UTC displays as 15:00 in Manila.
+  const confirmationTimestampColumns = [
+    "verification_window_start",
+    "verification_window_end",
+    "created_at",
+  ];
+  const confirmationTimestampTypes = await pgPool.query(
+    `
+      SELECT column_name, data_type
+      FROM information_schema.columns
+      WHERE table_schema = $1
+        AND table_name = $2
+        AND column_name = ANY($3::text[])
+    `,
+    [safeSchema, String(CONFIRMATIONS_TABLE).replace(/[^a-zA-Z0-9_]/g, ""), confirmationTimestampColumns]
+  );
+  for (const column of confirmationTimestampTypes.rows) {
+    if (column.data_type !== "timestamp without time zone") continue;
+    const safeColumn = confirmationTimestampColumns.find((name) => name === column.column_name);
+    if (!safeColumn) continue;
+    await pgPool.query(`
+      ALTER TABLE ${confirmationsTable}
+        ALTER COLUMN "${safeColumn}" TYPE TIMESTAMPTZ
+        USING "${safeColumn}" AT TIME ZONE 'UTC'
+    `);
   }
 
   await pgPool.query(`

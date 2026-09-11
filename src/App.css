@@ -1,3 +1,8 @@
+/*
+ * Mespack Machine Monitoring
+ * Consolidated stylesheet: dashboard, administration, operator and PIN views.
+ */
+
 * {
 box-sizing: border-box;
 }
@@ -5347,6 +5352,140 @@ margin-top: 10px;
   min-width: 0;
 }
 
+.studio-shift-status-row {
+  z-index: 45;
+  width: auto;
+  height: 82px;
+  min-height: 82px;
+  margin: 0;
+  display: grid;
+  grid-template-columns: clamp(220px, 20vw, 292px) minmax(350px, 1fr) clamp(220px, 20vw, 292px);
+  align-items: center;
+  gap: 8px;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  left: 10px;
+  pointer-events: none;
+}
+
+.studio-confirmation-status {
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 62px;
+  margin: 0;
+  padding: 6px 13px;
+  color: var(--studio-text);
+  border: 1px solid var(--studio-line);
+  border-radius: 13px;
+  background: var(--studio-panel);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.studio-confirmation-status.previous {
+  grid-column: 1;
+}
+
+.studio-confirmation-status.current {
+  grid-column: 3;
+  animation-delay: -2.4s;
+}
+
+.studio-confirmation-status-icon {
+  flex: 0 0 27px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--studio-muted);
+  border: 1px solid var(--studio-line);
+  background: var(--studio-panel-strong);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.studio-confirmation-status-copy {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: calc(100% - 47px);
+  text-align: center;
+  display: grid;
+  gap: 1px;
+}
+
+.studio-confirmation-status-copy small {
+  color: var(--studio-muted);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  font-size: 7px;
+  font-weight: 800;
+}
+
+.studio-confirmation-status-copy strong {
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.studio-confirmation-status.confirmed {
+  border-color: color-mix(in srgb, var(--studio-safe) 38%, var(--studio-line));
+  background: color-mix(in srgb, var(--studio-safe) 9%, var(--studio-panel));
+}
+
+.studio-confirmation-status.confirmed .studio-confirmation-status-icon {
+  color: #07130c;
+  border-color: var(--studio-safe);
+  background: var(--studio-safe);
+}
+
+.studio-confirmation-status.confirmed .studio-confirmation-status-copy strong {
+  color: var(--studio-safe);
+}
+
+.studio-confirmation-status.pending {
+  border-color: color-mix(in srgb, var(--studio-warning) 38%, var(--studio-line));
+  background: color-mix(in srgb, var(--studio-warning) 8%, var(--studio-panel));
+}
+
+.studio-confirmation-status.pending .studio-confirmation-status-icon,
+.studio-confirmation-status.pending .studio-confirmation-status-copy strong {
+  color: var(--studio-warning);
+}
+
+.studio-confirmation-status.missed {
+  border-color: color-mix(in srgb, var(--studio-danger) 38%, var(--studio-line));
+  background: color-mix(in srgb, var(--studio-danger) 8%, var(--studio-panel));
+}
+
+.studio-confirmation-status.missed .studio-confirmation-status-icon,
+.studio-confirmation-status.missed .studio-confirmation-status-copy strong {
+  color: var(--studio-danger);
+}
+
+.studio-confirmation-status.empty .studio-confirmation-status-icon,
+.studio-confirmation-status.pending .studio-confirmation-status-icon,
+.studio-confirmation-status.missed .studio-confirmation-status-icon {
+  color: var(--studio-danger);
+  border-color: color-mix(in srgb, var(--studio-danger) 58%, var(--studio-line));
+  background: color-mix(in srgb, var(--studio-danger) 13%, var(--studio-panel-strong));
+}
+
+.studio-confirmation-status.error {
+  border-color: color-mix(in srgb, var(--studio-danger) 38%, var(--studio-line));
+  background: color-mix(in srgb, var(--studio-danger) 8%, var(--studio-panel));
+}
+
+.studio-confirmation-status.error .studio-confirmation-status-icon,
+.studio-confirmation-status.error .studio-confirmation-status-copy strong {
+  color: var(--studio-danger);
+}
+
 .studio-app .studio-confirm-button {
   border: 1px solid var(--studio-line);
   cursor: pointer;
@@ -5441,6 +5580,53 @@ margin-top: 10px;
   height: 48px;
   min-height: 48px;
   margin-top: 6px;
+}
+
+.studio-shift-status-row {
+  height: 62px;
+  min-height: 62px;
+  top: 6px;
+}
+
+.studio-confirmation-status {
+  min-height: 52px;
+  padding-block: 4px;
+}
+}
+
+@media (max-width: 1250px) {
+.studio-shift-status-row {
+  height: 44px;
+  min-height: 44px;
+  top: 6px;
+}
+
+.studio-confirmation-status {
+  min-height: 44px;
+}
+
+.studio-machine-switcher {
+  top: 58px;
+}
+
+.studio-workspace {
+  inset-block: 148px 10px;
+}
+}
+
+@media (max-width: 1100px) {
+.studio-shift-status-row {
+  grid-template-columns: minmax(178px, 22vw) minmax(330px, 1fr) minmax(178px, 22vw);
+}
+}
+
+@media (max-width: 900px) and (orientation: portrait) {
+.studio-shift-status-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.studio-confirmation-status.current {
+  grid-column: 2;
 }
 }
 
@@ -5676,6 +5862,29 @@ margin-top: 10px;
   width: calc(100% - 12px);
   margin: 6px 6px 0;
   padding-inline: 10px 6px;
+}
+
+.studio-shift-status-row {
+  width: auto;
+  margin: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  right: 6px;
+  left: 6px;
+}
+
+.studio-confirmation-status.current {
+  grid-column: 2;
+}
+
+.studio-confirmation-status {
+  min-height: 42px;
+  padding-inline: 9px;
+  gap: 8px;
+}
+
+.studio-confirmation-status-copy {
+  min-width: 0;
 }
 
 .studio-admin-button {

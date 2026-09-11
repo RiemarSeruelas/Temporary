@@ -593,6 +593,47 @@ function getCurrentVerificationWindow(now = new Date()) {
     .find((window) => window?.is_in_window) || null;
 }
 
+function getCurrentProductionShift(now = new Date()) {
+  const currentParts = manilaParts(now);
+  let shiftCode = "NIGHT";
+  let shiftDate = manilaDateKey(now);
+
+  if (currentParts.hour >= 6 && currentParts.hour < 14) {
+    shiftCode = "MORNING";
+  } else if (currentParts.hour >= 14 && currentParts.hour < 22) {
+    shiftCode = "AFTERNOON";
+  } else if (currentParts.hour < 6) {
+    shiftDate = addDaysToDateKey(shiftDate, -1);
+  }
+
+  const verificationWindow = getShiftWindowForDate(shiftCode, shiftDate);
+  const currentTime = now.getTime();
+  const windowStart = new Date(verificationWindow.window_start).getTime();
+  const windowEnd = new Date(verificationWindow.window_end).getTime();
+
+  return {
+    ...verificationWindow,
+    confirmation_open: currentTime >= windowStart && currentTime <= windowEnd,
+  };
+}
+
+function getPreviousProductionShift(now = new Date()) {
+  const currentShift = getCurrentProductionShift(now);
+  const previousShiftCode = {
+    MORNING: "NIGHT",
+    AFTERNOON: "MORNING",
+    NIGHT: "AFTERNOON",
+  }[currentShift.shift_code];
+  const previousShiftDate = currentShift.shift_code === "MORNING"
+    ? addDaysToDateKey(currentShift.shift_date, -1)
+    : currentShift.shift_date;
+
+  return {
+    ...getShiftWindowForDate(previousShiftCode, previousShiftDate),
+    confirmation_open: false,
+  };
+}
+
 function isMachineDataFresh(machineData = latestMachineData, now = new Date()) {
   if (!machineData?.lastUpdated) return false;
   const last = new Date(machineData.lastUpdated);
@@ -2334,6 +2375,120 @@ app.get("/api/operator/registration-context", (req, res) => {
     open_shift: windows.find((window) => window.is_in_window) || null,
     windows,
   });
+});
+
+app.get("/api/machine-check/status", async (req, res) => {
+  try {
+    const machineId = normalizeMachineId(req.query?.machine);
+    if (!machineId) {
+      return res.status(400).json({ error: "Machine is required." });
+    }
+
+    const now = new Date();
+    const currentShift = getCurrentProductionShift(now);
+    const previousShift = getPreviousProductionShift(now);
+    const [registrationResult, confirmationResult] = await Promise.all([
+      pgPool.query(
+        `
+          SELECT id, person_name, machine_name, shift_code,
+                 to_char(shift_date, 'YYYY-MM-DD') AS shift_date_key,
+                 is_active, registered_at
+          FROM ${operatorRegistrationsTable}
+          WHERE machine_id = $1
+            AND (
+              (shift_code = $2 AND shift_date = $3::date)
+              OR (shift_code = $4 AND shift_date = $5::date)
+            )
+          ORDER BY updated_at DESC, id DESC
+        `,
+        [
+          machineId,
+          currentShift.shift_code,
+          currentShift.shift_date,
+          previousShift.shift_code,
+          previousShift.shift_date,
+        ]
+      ),
+      pgPool.query(
+        `
+          SELECT id, person_name, machine_name, shift_code,
+                 to_char(shift_date, 'YYYY-MM-DD') AS shift_date_key,
+                 created_at
+          FROM ${confirmationsTable}
+          WHERE machine = $1
+            AND (
+              (shift_code = $2 AND shift_date = $3::date)
+              OR (shift_code = $4 AND shift_date = $5::date)
+            )
+            AND LOWER(BTRIM(COALESCE(confirmation_status, 'confirmed'))) IN ('confirmed', 'verified')
+          ORDER BY created_at DESC, id DESC
+        `,
+        [
+          machineId,
+          currentShift.shift_code,
+          currentShift.shift_date,
+          previousShift.shift_code,
+          previousShift.shift_date,
+        ]
+      ),
+    ]);
+
+    function statusForShift(shift) {
+      const matchesShift = (row) => (
+        row.shift_code === shift.shift_code
+        && postgresDateKey(row.shift_date_key) === shift.shift_date
+      );
+      const registration = registrationResult.rows.find(matchesShift) || null;
+      const confirmation = confirmationResult.rows.find(matchesShift) || null;
+
+      return {
+        shift: {
+          code: shift.shift_code,
+          date: shift.shift_date,
+          label: shift.shift_label,
+          confirmation_window: shift.verification_label,
+          confirmation_open: shift.confirmation_open,
+        },
+        state: confirmation ? "CONFIRMED" : registration ? "PENDING" : "NO_REGISTRATION",
+        has_record: Boolean(confirmation),
+        record: confirmation ? {
+          id: confirmation.id,
+          person_name: confirmation.person_name,
+          machine_name: confirmation.machine_name,
+          confirmed_at: confirmation.created_at,
+        } : null,
+        registration: registration ? {
+          id: registration.id,
+          person_name: registration.person_name,
+          machine_name: registration.machine_name,
+          registered_at: registration.registered_at,
+        } : null,
+      };
+    }
+
+    const current = statusForShift(currentShift);
+    const previous = statusForShift(previousShift);
+
+    res.set("Cache-Control", "no-store");
+    res.json({
+      ok: true,
+      current_time: now.toISOString(),
+      machine: {
+        id: machineId,
+        name: current.record?.machine_name
+          || current.registration?.machine_name
+          || registrationResult.rows[0]?.machine_name
+          || confirmationResult.rows[0]?.machine_name
+          || machineId,
+      },
+      ...current,
+      current,
+      previous,
+    });
+  } catch (err) {
+    logError("❌ Confirmation status failed", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post("/api/machine-check/confirm", async (req, res) => {

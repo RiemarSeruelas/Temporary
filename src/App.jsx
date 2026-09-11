@@ -2216,6 +2216,8 @@ function LegacyDashboardApp({
   const [machineImageAspect, setMachineImageAspect] = useState(FIXED_MACHINE_CANVAS_ASPECT);
   const [confirmationModalOpen, setConfirmationModalOpen] = useState(false);
   const [confirmToast, setConfirmToast] = useState("");
+  const [confirmationStatus, setConfirmationStatus] = useState({ loading: true, data: null, error: "" });
+  const [confirmationRefreshKey, setConfirmationRefreshKey] = useState(0);
   const [machineSwipeOffset, setMachineSwipeOffset] = useState(0);
   const [machineSwipeActive, setMachineSwipeActive] = useState(false);
   const machineSwipeGesture = useRef({ active: false, startX: 0, dragged: false, ignoreClick: false });
@@ -2256,6 +2258,103 @@ function LegacyDashboardApp({
       setActiveMachineId(Object.keys(machineConfigs)[0] || "no-data");
     }
   }, [machineConfigs, activeMachineId]);
+
+  useEffect(() => {
+    if (!activeMachine.id || activeMachine.id === "no-data") {
+      setConfirmationStatus({ loading: false, data: null, error: "" });
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let disposed = false;
+
+    async function loadConfirmationStatus(showLoading = false) {
+      if (showLoading) {
+        setConfirmationStatus({ loading: true, data: null, error: "" });
+      }
+      try {
+        const response = await fetch(
+          `/api/machine-check/status?machine=${encodeURIComponent(activeMachine.id)}`,
+          { signal: controller.signal, cache: "no-store" }
+        );
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Unable to check the confirmation record.");
+        if (!disposed) setConfirmationStatus({ loading: false, data, error: "" });
+      } catch (statusError) {
+        if (statusError.name === "AbortError" || disposed) return;
+        setConfirmationStatus((current) => ({
+          loading: false,
+          data: current.data,
+          error: statusError.message,
+        }));
+      }
+    }
+
+    loadConfirmationStatus(true);
+    const interval = window.setInterval(() => loadConfirmationStatus(false), 15000);
+    return () => {
+      disposed = true;
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, [activeMachine.id, confirmationRefreshKey]);
+
+  const confirmationBanners = useMemo(() => {
+    const statusData = confirmationStatus.data;
+    const waitingBanner = (period) => ({
+      tone: "loading",
+      icon: "…",
+      title: "Checking",
+      shiftLabel: activeMachine.name || `${period} shift`,
+    });
+    const errorBanner = {
+      tone: "error",
+      icon: "!",
+      title: "Unavailable",
+      shiftLabel: "Retrying automatically",
+    };
+
+    if (confirmationStatus.loading && !statusData) {
+      return {
+        previous: waitingBanner("Previous"),
+        current: waitingBanner("Current"),
+      };
+    }
+    if (confirmationStatus.error && !statusData) {
+      return { previous: errorBanner, current: errorBanner };
+    }
+
+    function bannerFor(status, period) {
+      const shiftLabel = status?.shift?.label || `${period} shift`;
+      if (status?.has_record) {
+        return {
+          tone: "confirmed",
+          icon: "✓",
+          title: `${safeText(status.record?.person_name)} · ${formatTime(status.record?.confirmed_at)}`,
+          shiftLabel,
+        };
+      }
+      if (status?.state === "PENDING") {
+        return {
+          tone: period === "Previous" ? "missed" : "pending",
+          icon: period === "Previous" ? "×" : "—",
+          title: `${safeText(status.registration?.person_name)} · ${period === "Previous" ? "Missed" : "Pending"}`,
+          shiftLabel,
+        };
+      }
+      return {
+        tone: "empty",
+        icon: "—",
+        title: "No record",
+        shiftLabel,
+      };
+    }
+
+    return {
+      previous: bannerFor(statusData?.previous, "Previous"),
+      current: bannerFor(statusData?.current || statusData, "Current"),
+    };
+  }, [activeMachine.name, confirmationStatus]);
 
   function showConfirmationToast(message) {
     setConfirmToast(message);
@@ -2530,6 +2629,32 @@ const machineRows = useMemo(() => {
       </header>
 
       <main className="studio-stage">
+        {machineList.length > 0 && (
+          <div className="studio-shift-status-row" aria-live="polite">
+            <section
+              className={`studio-confirmation-status previous floating-media ${confirmationBanners.previous.tone}`}
+              aria-label="Previous shift confirmation status"
+            >
+              <span className="studio-confirmation-status-icon" aria-hidden="true">{confirmationBanners.previous.icon}</span>
+              <span className="studio-confirmation-status-copy">
+                <small>Previous shift · {confirmationBanners.previous.shiftLabel}</small>
+                <strong>{confirmationBanners.previous.title}</strong>
+              </span>
+            </section>
+
+            <section
+              className={`studio-confirmation-status current floating-media ${confirmationBanners.current.tone}`}
+              aria-label="Current shift confirmation status"
+            >
+              <span className="studio-confirmation-status-icon" aria-hidden="true">{confirmationBanners.current.icon}</span>
+              <span className="studio-confirmation-status-copy">
+                <small>Current shift · {confirmationBanners.current.shiftLabel}</small>
+                <strong>{confirmationBanners.current.title}</strong>
+              </span>
+            </section>
+          </div>
+        )}
+
         <div
           className={`studio-machine-switcher studio-card-swipe ${machineSwipeActive ? "is-swiping" : ""}`}
           aria-label="Machine selector"
@@ -2722,7 +2847,10 @@ const machineRows = useMemo(() => {
           machines={machineList}
           theme={theme}
           onClose={() => setConfirmationModalOpen(false)}
-          onConfirmed={(message) => showConfirmationToast(message)}
+          onConfirmed={(message) => {
+            showConfirmationToast(message);
+            setConfirmationRefreshKey((current) => current + 1);
+          }}
         />
       )}
 

@@ -3,6 +3,16 @@
 
 CREATE SCHEMA IF NOT EXISTS machine_monitoring;
 
+CREATE TABLE IF NOT EXISTS machine_monitoring.operators (
+  id BIGSERIAL PRIMARY KEY,
+  person_name TEXT NOT NULL,
+  pin_hash TEXT NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_operators_name
+  ON machine_monitoring.operators (LOWER(person_name));
+
 CREATE TABLE IF NOT EXISTS machine_monitoring.machine_check_confirmations (
   id SERIAL PRIMARY KEY,
   person_id INTEGER,
@@ -19,6 +29,9 @@ CREATE TABLE IF NOT EXISTS machine_monitoring.machine_check_confirmations (
   machine_required BOOLEAN DEFAULT TRUE,
   confirmation_status TEXT DEFAULT 'confirmed',
   registration_id BIGINT,
+  operator_id BIGINT REFERENCES machine_monitoring.operators(id),
+  state_snapshot JSONB,
+  request_id TEXT,
   machine_activity_reason TEXT,
   verification_method TEXT NOT NULL DEFAULT 'registration_pin',
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -37,12 +50,18 @@ ALTER TABLE machine_monitoring.machine_check_confirmations
   ADD COLUMN IF NOT EXISTS machine_required BOOLEAN DEFAULT TRUE,
   ADD COLUMN IF NOT EXISTS confirmation_status TEXT DEFAULT 'confirmed',
   ADD COLUMN IF NOT EXISTS registration_id BIGINT,
+  ADD COLUMN IF NOT EXISTS operator_id BIGINT REFERENCES machine_monitoring.operators(id),
+  ADD COLUMN IF NOT EXISTS state_snapshot JSONB,
+  ADD COLUMN IF NOT EXISTS request_id TEXT,
   ADD COLUMN IF NOT EXISTS machine_activity_reason TEXT,
   ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
   ADD COLUMN IF NOT EXISTS verification_method TEXT NOT NULL DEFAULT 'registration_pin';
 
 ALTER TABLE machine_monitoring.machine_check_confirmations
   ALTER COLUMN verification_method SET DEFAULT 'registration_pin';
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_confirmations_request_once
+  ON machine_monitoring.machine_check_confirmations (request_id);
 
 -- Older app versions stored UTC values in timezone-less columns. Convert each
 -- one only when needed; existing 07:00 values then display as 15:00 Manila.

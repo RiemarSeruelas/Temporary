@@ -5,6 +5,8 @@ const mqtt = require("mqtt");
 const crypto = require("crypto");
 const path = require("path");
 const { Pool } = require("pg");
+const { promisify } = require("node:util");
+const { DEFAULT_POINT_VALUE_RULES, interpretIncomingValue, payloadValueAtPath } = require("../shared/point-values.mjs");
 require("dotenv").config({ path: path.join(__dirname, ".env"), override: true, quiet: true });
 
 const app = express();
@@ -47,6 +49,7 @@ const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "").trim();
 const POSTGRES_SCHEMA = process.env.POSTGRES_SCHEMA || "machine_monitoring";
 const CONFIRMATIONS_TABLE = process.env.POSTGRES_CONFIRMATIONS_TABLE || "machine_check_confirmations";
 const OPERATOR_REGISTRATIONS_TABLE = process.env.POSTGRES_OPERATOR_REGISTRATIONS_TABLE || "operator_shift_registrations";
+const OPERATORS_TABLE = "operators";
 const MACHINE_RECEIPTS_TABLE = process.env.POSTGRES_MACHINE_RECEIPTS_TABLE || "machine_data_receipts";
 const MACHINES_TABLE = process.env.POSTGRES_MACHINES_TABLE || "machine_configurations";
 const MACHINE_SOURCES_TABLE = process.env.POSTGRES_MACHINE_SOURCES_TABLE || "machine_data_sources";
@@ -61,26 +64,10 @@ const MAX_MACHINE_IMAGE_BYTES = 12 * 1024 * 1024;
 const MANILA_OFFSET_MINUTES = 8 * 60;
 const MACHINE_DATA_STALE_SECONDS = Number(process.env.MACHINE_DATA_STALE_SECONDS || 300);
 
-const SHIFT_WINDOWS = {
-  MORNING: {
-    label: "6 AM - 10 AM",
-    shiftLabel: "6 AM - 2 PM",
-    verifyStart: "06:00",
-    verifyEnd: "10:00",
-  },
-  AFTERNOON: {
-    label: "2 PM - 6 PM",
-    shiftLabel: "2 PM - 10 PM",
-    verifyStart: "14:00",
-    verifyEnd: "18:00",
-  },
-  NIGHT: {
-    label: "10 PM - 2 AM",
-    shiftLabel: "10 PM - 6 AM",
-    verifyStart: "22:00",
-    verifyEnd: "02:00",
-    crossesMidnight: true,
-  },
+const PRODUCTION_SHIFTS = {
+  MORNING: { label: "6 AM - 2 PM", start: "06:00", end: "14:00" },
+  AFTERNOON: { label: "2 PM - 10 PM", start: "14:00", end: "22:00" },
+  NIGHT: { label: "10 PM - 6 AM", start: "22:00", end: "06:00" },
 };
 
 const pgPool = new Pool({
@@ -99,6 +86,7 @@ function tableName(name) {
 
 const confirmationsTable = tableName(CONFIRMATIONS_TABLE);
 const operatorRegistrationsTable = tableName(OPERATOR_REGISTRATIONS_TABLE);
+const operatorsTable = tableName(OPERATORS_TABLE);
 const machineReceiptsTable = tableName(MACHINE_RECEIPTS_TABLE);
 const machinesTable = tableName(MACHINES_TABLE);
 const machineSourcesTable = tableName(MACHINE_SOURCES_TABLE);
@@ -124,17 +112,6 @@ let latestMachineData = {
 
 latestMachineDataById.set("mespack", latestMachineData);
 
-const DEFAULT_POINT_VALUE_RULES = {
-  primary: [
-    { value: "1", label: "Closed", severity: "safe", color: "#22c55e" },
-    { value: "0", label: "Open", severity: "warning", color: "#f59e0b" },
-  ],
-  secondary: [
-    { value: "1", label: "Locked", severity: "safe", color: "#22c55e" },
-    { value: "0", label: "Unlocked", severity: "danger", color: "#ef4444" },
-  ],
-  fallback: { label: "Unknown", severity: "warning", color: "#f59e0b" },
-};
 const DEFAULT_POINT_VALUE_RULES_SQL = JSON.stringify(DEFAULT_POINT_VALUE_RULES).replace(/'/g, "''");
 
 function normalizePointValueRules(value) {
@@ -537,60 +514,10 @@ function manilaLocalToUtc(dateKey, hhmm, dayOffset = 0) {
 
 function normalizeShiftCode(value) {
   const text = String(value || "").trim().toUpperCase();
-  if (["MORNING", "AM", "1", "06:00-10:00", "6AM-10AM", "6 AM - 10 AM"].includes(text)) return "MORNING";
-  if (["AFTERNOON", "PM", "2", "14:00-18:00", "2PM-6PM", "2 PM - 6 PM"].includes(text)) return "AFTERNOON";
-  if (["NIGHT", "NOC", "3", "22:00-02:00", "10PM-2AM", "10 PM - 2 AM"].includes(text)) return "NIGHT";
+  if (["MORNING", "AM", "1"].includes(text)) return "MORNING";
+  if (["AFTERNOON", "PM", "2"].includes(text)) return "AFTERNOON";
+  if (["NIGHT", "NOC", "3"].includes(text)) return "NIGHT";
   return "";
-}
-
-function getShiftWindowForDate(shiftCode, shiftDate) {
-  const code = normalizeShiftCode(shiftCode);
-  const config = SHIFT_WINDOWS[code];
-  if (!config || !/^\d{4}-\d{2}-\d{2}$/.test(String(shiftDate || ""))) return null;
-
-  const windowStart = manilaLocalToUtc(shiftDate, config.verifyStart, 0);
-  const windowEnd = manilaLocalToUtc(shiftDate, config.verifyEnd, config.crossesMidnight ? 1 : 0);
-
-  return {
-    shift_code: code,
-    shift_date: shiftDate,
-    shift_label: config.shiftLabel,
-    verification_label: config.label,
-    window_start: windowStart.toISOString(),
-    window_end: windowEnd.toISOString(),
-  };
-}
-
-function getVerificationWindow(shiftCode, now = new Date()) {
-  const code = normalizeShiftCode(shiftCode);
-  const config = SHIFT_WINDOWS[code];
-  if (!config) return null;
-
-  const currentParts = manilaParts(now);
-  let shiftDate = manilaDateKey(now);
-
-  // Night shift belongs to the previous date between 00:00 and 05:59 Manila time.
-  if (code === "NIGHT" && currentParts.hour < 6) {
-    shiftDate = addDaysToDateKey(shiftDate, -1);
-  }
-
-  const baseWindow = getShiftWindowForDate(code, shiftDate);
-  const windowStart = new Date(baseWindow.window_start);
-  const windowEnd = new Date(baseWindow.window_end);
-  const currentTime = now.getTime();
-
-  return {
-    ...baseWindow,
-    has_started: currentTime >= windowStart.getTime(),
-    has_ended: currentTime > windowEnd.getTime(),
-    is_in_window: currentTime >= windowStart.getTime() && currentTime <= windowEnd.getTime(),
-  };
-}
-
-function getCurrentVerificationWindow(now = new Date()) {
-  return Object.keys(SHIFT_WINDOWS)
-    .map((shiftCode) => getVerificationWindow(shiftCode, now))
-    .find((window) => window?.is_in_window) || null;
 }
 
 function getCurrentProductionShift(now = new Date()) {
@@ -606,14 +533,11 @@ function getCurrentProductionShift(now = new Date()) {
     shiftDate = addDaysToDateKey(shiftDate, -1);
   }
 
-  const verificationWindow = getShiftWindowForDate(shiftCode, shiftDate);
-  const currentTime = now.getTime();
-  const windowStart = new Date(verificationWindow.window_start).getTime();
-  const windowEnd = new Date(verificationWindow.window_end).getTime();
-
   return {
-    ...verificationWindow,
-    confirmation_open: currentTime >= windowStart && currentTime <= windowEnd,
+    shift_code: shiftCode,
+    shift_date: shiftDate,
+    shift_label: PRODUCTION_SHIFTS[shiftCode].label,
+    confirmation_open: true,
   };
 }
 
@@ -629,8 +553,10 @@ function getPreviousProductionShift(now = new Date()) {
     : currentShift.shift_date;
 
   return {
-    ...getShiftWindowForDate(previousShiftCode, previousShiftDate),
-    confirmation_open: false,
+    shift_code: previousShiftCode,
+    shift_date: previousShiftDate,
+    shift_label: PRODUCTION_SHIFTS[previousShiftCode].label,
+    confirmation_open: previousShiftDate === currentShift.shift_date,
   };
 }
 
@@ -824,183 +750,151 @@ function normalizeHighBytePayload(rawPayload) {
 }
 
 
-function normalizePin(value) {
-  return String(value || "").replace(/\D/g, "").slice(0, 6);
+function normalizeOperatorName(value) {
+  return String(value ?? "").trim().replace(/\s+/g, " ");
 }
 
 function requireSixDigitPin(value) {
-  const pin = normalizePin(value);
-  if (pin.length !== 6) {
-    const error = new Error("Enter a 6-digit PIN.");
-    error.statusCode = 400;
-    throw error;
+  const pin = String(value ?? "");
+  if (!/^\d{6}$/.test(pin)) {
+    throw Object.assign(new Error("Enter a 6-digit PIN."), { statusCode: 400 });
   }
   return pin;
 }
 
-function operatorPinHash(pin) {
-  return crypto
-    .createHash("sha256")
-    .update(`machine-monitoring-pin:${pin}`)
-    .digest("hex");
+const derivePin = promisify(crypto.scrypt);
+const operatorPinAttempts = new Map();
+
+async function hashOperatorPin(pin, salt = crypto.randomBytes(16).toString("hex")) {
+  const derived = await derivePin(pin, salt, 32);
+  return `${salt}:${derived.toString("hex")}`;
 }
 
-function verifyRegistrationPin(pin, registration) {
-  const normalizedPin = requireSixDigitPin(pin);
-  if (!registration?.pin_hash) {
-    const error = new Error("This registration has no PIN. Register the operator again.");
-    error.statusCode = 409;
-    throw error;
+async function authenticateOperator(name, pin) {
+  const result = await pgPool.query(
+    `SELECT id, person_name, pin_hash FROM ${operatorsTable} WHERE LOWER(person_name) = LOWER($1) AND is_active`,
+    [name]
+  );
+  const operator = result.rows[0];
+  if (!operator) {
+    throw Object.assign(new Error("Invalid operator name or PIN."), { statusCode: 403 });
   }
-  if (operatorPinHash(normalizedPin) !== String(registration.pin_hash)) {
-    const error = new Error("Invalid PIN.");
-    error.statusCode = 403;
-    throw error;
+
+  const now = Date.now();
+  let attempts = operatorPinAttempts.get(operator.id);
+  if (!attempts || now >= attempts.expiresAt) {
+    attempts = { count: 0, expiresAt: now + 5 * 60 * 1000 };
+    operatorPinAttempts.set(operator.id, attempts);
   }
-  return normalizedPin;
+  if (attempts.count >= 5) {
+    throw Object.assign(new Error("Too many attempts. Try again in a few minutes."), { statusCode: 429 });
+  }
+  attempts.count += 1;
+
+  const [salt] = operator.pin_hash.split(":");
+  const expected = Buffer.from(operator.pin_hash);
+  const supplied = Buffer.from(await hashOperatorPin(pin, salt));
+  if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) {
+    throw Object.assign(new Error("Invalid operator name or PIN."), { statusCode: 403 });
+  }
+
+  operatorPinAttempts.delete(operator.id);
+  return operator;
 }
 
-async function saveShiftRegistration({ person_name, machine, machine_name, shift_code, pin, now = new Date() }) {
-  const machineId = normalizeMachineId(machine);
-  const operatorName = String(person_name || "").trim();
-  const normalizedPin = requireSixDigitPin(pin);
-  const pinHash = operatorPinHash(normalizedPin);
-  const window = getVerificationWindow(shift_code, now);
-
-  if (!operatorName) {
-    const error = new Error("Operator name is required.");
-    error.statusCode = 400;
-    throw error;
-  }
-  if (!window) {
-    const error = new Error("Select one of the three configured shifts.");
-    error.statusCode = 400;
-    throw error;
-  }
-  const machineResult = await pgPool.query(
-    `SELECT id, name FROM ${machinesTable} WHERE id = $1 AND is_active = TRUE LIMIT 1`,
+async function loadMachineSnapshotPoints(machineId) {
+  const result = await pgPool.query(
+    `
+      SELECT m.config_revision,
+             p.point_id, p.name, COALESCE(s.name, p.area, 'Machine') AS area,
+             p.source_fields, p.source_key_primary, p.source_key_secondary, p.value_rules
+      FROM ${machinesTable} m
+      LEFT JOIN ${machinePointsTable} p ON p.machine_id = m.id AND p.is_active
+      LEFT JOIN ${machineSegmentsTable} s ON s.machine_id = m.id AND s.id = p.segment_id AND s.is_active
+      WHERE m.id = $1 AND m.is_active
+      ORDER BY s.display_order NULLS LAST, p.display_order, p.point_id
+    `,
     [machineId]
   );
-  if (!machineResult.rows[0]) {
-    const error = new Error("The selected machine is not active or does not exist.");
-    error.statusCode = 404;
-    throw error;
+
+  if (!result.rows.length) {
+    throw Object.assign(new Error("The selected machine is not active or does not exist."), { statusCode: 404 });
   }
-
-  const saved = await pgPool.query(
-    `
-      INSERT INTO ${operatorRegistrationsTable} (
-        person_id, person_name, machine_id, machine_name, shift_code, shift_date,
-        verification_window_start, verification_window_end, pin_hash,
-        is_active, registered_at, updated_at
-      )
-      VALUES (NULL, $1, $2, $3, $4, $5::date, $6::timestamptz, $7::timestamptz, $8, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-      ON CONFLICT (machine_id, shift_date, shift_code) DO UPDATE SET
-        person_id = NULL,
-        person_name = EXCLUDED.person_name,
-        machine_name = EXCLUDED.machine_name,
-        verification_window_start = EXCLUDED.verification_window_start,
-        verification_window_end = EXCLUDED.verification_window_end,
-        pin_hash = EXCLUDED.pin_hash,
-        is_active = TRUE,
-        registered_at = CURRENT_TIMESTAMP,
-        updated_at = CURRENT_TIMESTAMP
-      RETURNING *
-    `,
-    [
-      operatorName,
-      machineId,
-      machine_name || machineResult.rows[0].name,
-      window.shift_code,
-      window.shift_date,
-      window.window_start,
-      window.window_end,
-      pinHash,
-    ]
-  );
-
-  return { registration: saved.rows[0], window };
+  return {
+    revision: result.rows[0].config_revision,
+    points: result.rows.filter((row) => row.point_id !== null),
+  };
 }
 
-async function findCurrentMachineRegistration({ machine, now = new Date() }) {
-  const window = getCurrentVerificationWindow(now);
-  if (!window) return { registration: null, window: null };
-
-  const found = await pgPool.query(
-    `
-      SELECT *
-      FROM ${operatorRegistrationsTable}
-      WHERE machine_id = $1
-        AND shift_code = $2
-        AND shift_date = $3::date
-        AND is_active = TRUE
-      ORDER BY updated_at DESC, id DESC
-      LIMIT 1
-    `,
-    [normalizeMachineId(machine), window.shift_code, window.shift_date]
-  );
-
-  return { registration: found.rows[0] || null, window };
+function buildMachineSnapshot(machineData, points, capturedAt) {
+  const fresh = isMachineDataFresh(machineData, capturedAt);
+  const payload = fresh ? machineData.data : {};
+  return {
+    reading_received_at: machineData.lastUpdated || null,
+    data_state: fresh ? "available" : machineData.lastUpdated ? "stale" : "no_data",
+    points: points.map((point) => ({
+      id: point.point_id,
+      name: point.name,
+      area: point.area,
+      fields: normalizePointSourceFields(point).map((field, index) => {
+        const defaultRules = index === 1 ? DEFAULT_POINT_VALUE_RULES.secondary : DEFAULT_POINT_VALUE_RULES.primary;
+        const result = interpretIncomingValue(
+          payloadValueAtPath(payload, field.source_key),
+          field.value_rules.length ? field.value_rules : defaultRules,
+          field.fallback
+        );
+        return {
+          label: field.label,
+          state: result.label,
+          severity: result.className,
+          color: result.color,
+        };
+      }),
+    })),
+  };
 }
 
-async function insertConfirmationLog({ registration, machine, machine_name, verification }) {
-  const window = verification?.window || null;
+async function findConfirmationRequest({ requestId, operator, machineId, shiftCode, shiftDate }) {
+  const result = await pgPool.query(
+    `
+      SELECT id, person_name, machine_name, created_at
+      FROM ${confirmationsTable}
+      WHERE request_id = $1 AND operator_id = $2 AND machine = $3
+        AND shift_code = $4 AND to_char(shift_date, 'YYYY-MM-DD') = $5
+    `,
+    [requestId, operator.id, machineId, shiftCode, shiftDate]
+  );
+  return result.rows[0];
+}
+
+async function insertConfirmationLog({ requestId, operator, machineId, shiftCode, shiftDate }) {
+  const machine = await loadMachineSnapshotPoints(machineId);
+  const capturedAt = new Date();
+  const machineData = machineStateFor(machineId);
+  const snapshot = buildMachineSnapshot(machineData, machine.points, capturedAt);
+  const verification = getMachineVerificationState(machineData, capturedAt);
   const saved = await pgPool.query(
     `
       INSERT INTO ${confirmationsTable} (
-        person_id,
-        person_name,
-        employee_id,
-        department,
-        role,
-        machine,
-        machine_name,
-        shift_code,
-        shift_date,
-        verification_window_start,
-        verification_window_end,
-        machine_required,
-        confirmation_status,
-        registration_id,
-        machine_activity_reason,
-        verification_method
+        operator_id, person_name, role, machine, machine_name, shift_code, shift_date,
+        machine_required, confirmation_status, machine_activity_reason,
+        verification_method, created_at, state_snapshot, request_id
       )
-      VALUES (
-        $1, $2, NULL, NULL, 'operator', $3, $4, $5, $6::date,
-        $7::timestamptz, $8::timestamptz, $9, $10, $11, $12, 'registration_pin'
-      )
-      ON CONFLICT (registration_id) WHERE registration_id IS NOT NULL AND confirmation_status = 'confirmed'
-      DO UPDATE SET
-        person_name = EXCLUDED.person_name,
-        machine = EXCLUDED.machine,
-        machine_name = EXCLUDED.machine_name,
-        shift_code = EXCLUDED.shift_code,
-        shift_date = EXCLUDED.shift_date,
-        verification_window_start = EXCLUDED.verification_window_start,
-        verification_window_end = EXCLUDED.verification_window_end,
-        machine_required = EXCLUDED.machine_required,
-        machine_activity_reason = EXCLUDED.machine_activity_reason,
-        verification_method = 'registration_pin',
-        created_at = CURRENT_TIMESTAMP
-      RETURNING *
+      SELECT o.id, o.person_name, 'operator', m.id, m.name, $4, $5::date,
+        $6, 'confirmed', $7, 'operator_pin', $8::timestamptz, $9::jsonb, $10
+      FROM ${operatorsTable} o
+      JOIN ${machinesTable} m ON m.id = $1 AND m.is_active AND m.config_revision = $2
+      WHERE o.id = $3 AND o.is_active AND o.pin_hash = $11
+      ON CONFLICT (request_id) DO NOTHING
+      RETURNING id, person_name, machine_name, created_at
     `,
     [
-      registration?.person_id || null,
-      registration?.person_name || "No Data",
-      machine || registration?.machine_id || null,
-      machine_name || registration?.machine_name || machine || null,
-      verification?.window?.shift_code || registration?.shift_code || null,
-      verification?.window?.shift_date || registration?.shift_date || null,
-      window?.window_start ? new Date(window.window_start) : null,
-      window?.window_end ? new Date(window.window_end) : null,
-      verification?.machine_required === true,
-      String(verification?.status || "confirmed").toLowerCase(),
-      registration?.id || null,
-      verification?.machine_reason || null,
+      machineId, machine.revision, operator.id, shiftCode, shiftDate, verification.required,
+      verification.reason, capturedAt, JSON.stringify(snapshot), requestId, operator.pin_hash,
     ]
   );
 
-  return saved.rows[0];
+  return saved.rows[0] || findConfirmationRequest({ requestId, operator, machineId, shiftCode, shiftDate });
 }
 
 async function recordMachineReceipt(machineId, topic, machineRunning, receivedAt = new Date()) {
@@ -1021,7 +915,7 @@ async function recordMachineReceipt(machineId, topic, machineRunning, receivedAt
 }
 
 function normalizeDateRange(fromValue, toValue, now = new Date()) {
-  const today = manilaDateKey(now);
+  const today = getCurrentProductionShift(now).shift_date;
   const fallbackFrom = addDaysToDateKey(today, -7);
   const fallbackTo = addDaysToDateKey(today, 2);
   const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -1040,72 +934,56 @@ function normalizeDateRange(fromValue, toValue, now = new Date()) {
 
 function buildConfirmationMatrix({ registrations, confirmations, receipts, dates, now = new Date() }) {
   const nowMs = now.getTime();
-  const today = manilaDateKey(now);
+  const today = getCurrentProductionShift(now).shift_date;
+  const confirmationsByShift = new Map();
+  for (const confirmation of confirmations) {
+    const date = postgresDateKey(confirmation.shift_date_key || confirmation.shift_date);
+    const key = `${date}:${confirmation.shift_code}`;
+    const entries = confirmationsByShift.get(key) || [];
+    entries.push({
+      confirmation_id: confirmation.id,
+      registration_id: confirmation.registration_id,
+      person_name: confirmation.person_name,
+      machine_id: confirmation.machine,
+      machine_name: confirmation.machine_name || confirmation.machine,
+      state: "CONFIRMED",
+      confirmed_at: confirmation.created_at,
+      has_snapshot: confirmation.has_snapshot === true,
+    });
+    confirmationsByShift.set(key, entries);
+  }
 
   return dates.map((date) => {
     const shifts = {};
-    for (const shiftCode of Object.keys(SHIFT_WINDOWS)) {
-      const window = getShiftWindowForDate(shiftCode, date);
-      const windowStartMs = new Date(window.window_start).getTime();
-      const isFuture = date > today || nowMs < windowStartMs;
-      const assignments = registrations.filter((registration) => (
+    for (const [shiftCode, shift] of Object.entries(PRODUCTION_SHIFTS)) {
+      const isFuture = nowMs < manilaLocalToUtc(date, shift.start).getTime();
+      const confirmed = confirmationsByShift.get(`${date}:${shiftCode}`) || [];
+      const confirmedMachines = new Set(confirmed.map((entry) => entry.machine_id));
+      const historicalAssignments = registrations.filter((registration) => (
         postgresDateKey(registration.shift_date_key || registration.shift_date) === date
         && registration.shift_code === shiftCode
+        && !confirmedMachines.has(registration.machine_id)
       ));
 
-      // is_active only controls whether a PIN may be used right now. Historical
-      // registrations (and their confirmations) must remain visible in Logs.
-
-      if (!assignments.length) {
-        shifts[shiftCode] = { state: isFuture ? "FUTURE" : "NO_DATA", entries: [] };
-        continue;
-      }
-
-      const entries = assignments.map((registration) => {
-        if (isFuture) {
-          return {
-            registration_id: registration.id,
-            person_name: registration.person_name,
-            machine_id: registration.machine_id,
-            machine_name: registration.machine_name,
-            state: "FUTURE",
-            confirmed_at: null,
-          };
-        }
-
-        const matchingConfirmation = confirmations.find((confirmation) => (
-          Number(confirmation.registration_id) === Number(registration.id)
-          || (
-            !confirmation.registration_id
-            && Number(confirmation.person_id) === Number(registration.person_id)
-            && String(confirmation.machine || "") === String(registration.machine_id)
-            && String(confirmation.shift_code || "") === shiftCode
-            && postgresDateKey(confirmation.shift_date_key || confirmation.shift_date) === date
-          )
-        ));
-
-        const machineHadData = receipts.some((receipt) => (
+      const unconfirmed = historicalAssignments.map((registration) => {
+        const hadMachineData = !isFuture && receipts.some((receipt) => (
           String(receipt.machine_id) === String(registration.machine_id)
           && receipt.machine_running !== false
           && new Date(receipt.last_received_at).getTime() >= new Date(registration.verification_window_start).getTime()
           && new Date(receipt.first_received_at).getTime() <= new Date(registration.verification_window_end).getTime()
         ));
-
-        let state = "MISSED";
-        if (matchingConfirmation) state = "CONFIRMED";
-        else if (!machineHadData) state = "MACHINE_OFF";
-
         return {
           registration_id: registration.id,
           person_name: registration.person_name,
           machine_id: registration.machine_id,
           machine_name: registration.machine_name,
-          state,
-          confirmed_at: matchingConfirmation?.created_at || null,
+          state: isFuture ? "FUTURE" : hadMachineData ? "MISSED" : "MACHINE_OFF",
+          confirmed_at: null,
         };
       });
 
-      shifts[shiftCode] = { state: "ASSIGNED", entries };
+      const entries = [...confirmed, ...unconfirmed];
+      shifts[shiftCode] = { state: entries.length ? "ASSIGNED" : isFuture ? "FUTURE" : "NO_DATA", entries };
     }
 
     return { date, is_future: date > today, shifts };
@@ -1115,13 +993,12 @@ function buildConfirmationMatrix({ registrations, confirmations, receipts, dates
 async function loadOperatorOverview({ date_from, date_to, machine } = {}) {
   const range = normalizeDateRange(date_from, date_to, new Date());
   const machineId = machine ? normalizeMachineId(machine) : null;
-  const broadStart = manilaLocalToUtc(range.from, "00:00", 0).toISOString();
-  const broadEnd = manilaLocalToUtc(addDaysToDateKey(range.to, 1), "06:00", 0).toISOString();
 
-  const [registrationsResult, confirmationsResult, receiptsResult] = await Promise.all([
+  const [registrationsResult, confirmationsResult, operatorsResult] = await Promise.all([
     pgPool.query(
       `
-        SELECT *, to_char(shift_date, 'YYYY-MM-DD') AS shift_date_key
+        SELECT id, person_name, machine_id, machine_name, shift_code, is_active, registered_at,
+               verification_window_start, verification_window_end, to_char(shift_date, 'YYYY-MM-DD') AS shift_date_key
         FROM ${operatorRegistrationsTable}
         WHERE shift_date BETWEEN $1::date AND $2::date
           AND ($3::text IS NULL OR machine_id = $3::text)
@@ -1131,27 +1008,35 @@ async function loadOperatorOverview({ date_from, date_to, machine } = {}) {
     ),
     pgPool.query(
       `
-        SELECT *, to_char(shift_date, 'YYYY-MM-DD') AS shift_date_key
+        SELECT id, registration_id, person_name, machine, machine_name, shift_code, created_at,
+               to_char(shift_date, 'YYYY-MM-DD') AS shift_date_key, state_snapshot IS NOT NULL AS has_snapshot
         FROM ${confirmationsTable}
         WHERE shift_date BETWEEN $1::date AND $2::date
           AND LOWER(BTRIM(COALESCE(confirmation_status, 'confirmed'))) IN ('confirmed', 'verified')
           AND ($3::text IS NULL OR machine = $3::text)
-        ORDER BY created_at DESC
+        ORDER BY created_at DESC, id DESC
       `,
       [range.from, range.to, machineId]
     ),
-    pgPool.query(
-      `
-        SELECT *
-        FROM ${machineReceiptsTable}
-        WHERE last_received_at >= $1::timestamptz
-          AND first_received_at <= $2::timestamptz
-          AND ($3::text IS NULL OR machine_id = $3::text)
-        ORDER BY last_received_at DESC
-      `,
-      [broadStart, broadEnd, machineId]
-    ),
+    pgPool.query(`SELECT id, person_name, is_active FROM ${operatorsTable} ORDER BY person_name, id`),
   ]);
+
+  const receipts = registrationsResult.rows.length
+    ? (await pgPool.query(
+        `
+          SELECT machine_id, machine_running, first_received_at, last_received_at
+          FROM ${machineReceiptsTable}
+          WHERE last_received_at >= $1::timestamptz
+            AND first_received_at <= $2::timestamptz
+            AND machine_id = ANY($3::text[])
+        `,
+        [
+          manilaLocalToUtc(range.from, "00:00", 0),
+          manilaLocalToUtc(addDaysToDateKey(range.to, 1), "06:00", 0),
+          [...new Set(registrationsResult.rows.map((registration) => registration.machine_id))],
+        ]
+      )).rows
+    : [];
 
   const safeRegistrations = registrationsResult.rows.map((registration) => ({
     id: registration.id,
@@ -1159,18 +1044,19 @@ async function loadOperatorOverview({ date_from, date_to, machine } = {}) {
     machine_id: registration.machine_id,
     machine_name: registration.machine_name,
     shift_code: registration.shift_code,
-    shift_date: postgresDateKey(registration.shift_date_key || registration.shift_date),
+    shift_date: postgresDateKey(registration.shift_date_key),
     is_active: registration.is_active,
     registered_at: registration.registered_at,
   }));
 
   return {
     range,
+    operators: operatorsResult.rows,
     registrations: safeRegistrations,
     matrix: buildConfirmationMatrix({
       registrations: registrationsResult.rows,
       confirmations: confirmationsResult.rows,
-      receipts: receiptsResult.rows,
+      receipts,
       dates: range.dates,
       now: new Date(),
     }),
@@ -1180,6 +1066,18 @@ async function loadOperatorOverview({ date_from, date_to, machine } = {}) {
 async function ensureTables() {
   const safeSchema = POSTGRES_SCHEMA.replace(/[^a-zA-Z0-9_]/g, "");
   await pgPool.query(`CREATE SCHEMA IF NOT EXISTS "${safeSchema}"`);
+
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS ${operatorsTable} (
+      id BIGSERIAL PRIMARY KEY,
+      person_name TEXT NOT NULL,
+      pin_hash TEXT NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE
+    )
+  `);
+  await pgPool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_operators_name ON ${operatorsTable} (LOWER(person_name))
+  `);
 
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS ${confirmationsTable} (
@@ -1198,6 +1096,9 @@ async function ensureTables() {
       machine_required BOOLEAN DEFAULT TRUE,
       confirmation_status TEXT DEFAULT 'confirmed',
       registration_id BIGINT,
+      operator_id BIGINT REFERENCES ${operatorsTable}(id),
+      state_snapshot JSONB,
+      request_id TEXT,
       machine_activity_reason TEXT,
       verification_method TEXT NOT NULL DEFAULT 'registration_pin',
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -1381,6 +1282,8 @@ async function ensureTables() {
     ["verification_window_start", "TIMESTAMPTZ"], ["verification_window_end", "TIMESTAMPTZ"],
     ["machine_required", "BOOLEAN DEFAULT TRUE"],
     ["confirmation_status", "TEXT DEFAULT 'confirmed'"], ["registration_id", "BIGINT"],
+    ["operator_id", `BIGINT REFERENCES ${operatorsTable}(id)`],
+    ["state_snapshot", "JSONB"], ["request_id", "TEXT"],
     ["machine_activity_reason", "TEXT"],
     ["verification_method", "TEXT NOT NULL DEFAULT 'registration_pin'"],
     ["created_at", "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP"]
@@ -1437,6 +1340,10 @@ async function ensureTables() {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_confirmations_registration_once
       ON ${confirmationsTable} (registration_id)
       WHERE registration_id IS NOT NULL AND confirmation_status = 'confirmed'
+  `);
+  await pgPool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_confirmations_request_once
+      ON ${confirmationsTable} (request_id)
   `);
 }
 
@@ -2313,68 +2220,69 @@ app.get("/data-machine2", (req, res) => {
 });
 
 
-async function registerOperatorHandler(req, res) {
+app.post("/api/operator/register", async (req, res) => {
   try {
     if (!requireAdmin(req, res)) return;
 
-    const personName = String(req.body?.person_name || "").trim();
-    const machine = String(req.body?.machine || "").trim();
-    const machineName = String(req.body?.machine_name || "").trim();
-    const shiftCode = normalizeShiftCode(req.body?.shift_code || req.body?.shift);
-    const pin = normalizePin(req.body?.pin);
-
-    if (!personName || !machine || !shiftCode || !pin) {
-      return res.status(400).json({
-        error: "Operator name, machine, shift, and 6-digit PIN are required.",
-      });
+    const name = normalizeOperatorName(req.body?.person_name);
+    if (!name || name.length > 120) {
+      return res.status(400).json({ error: "Enter an operator name of 120 characters or fewer." });
+    }
+    const pin = requireSixDigitPin(req.body?.pin);
+    const result = await pgPool.query(
+      `
+        INSERT INTO ${operatorsTable} (person_name, pin_hash)
+        VALUES ($1, $2)
+        ON CONFLICT (LOWER(person_name)) DO NOTHING
+        RETURNING id, person_name, is_active
+      `,
+      [name, await hashOperatorPin(pin)]
+    );
+    const operator = result.rows[0];
+    if (!operator) {
+      return res.status(409).json({ error: "An operator with this name already exists." });
     }
 
-    const window = getVerificationWindow(shiftCode, new Date());
-    if (!window) {
-      return res.status(400).json({ error: "Select one of the three configured shifts." });
-    }
-
-    // Registration is allowed at any time. The operator chooses the 6-digit PIN
-    // here; only confirmation is restricted to the shift's four-hour window.
-    requireSixDigitPin(pin);
-
-    const assignment = await saveShiftRegistration({
-      person_name: personName,
-      machine,
-      machine_name: machineName,
-      shift_code: shiftCode,
-      pin,
-      now: new Date(),
-    });
-
-    res.json({
-      ok: true,
-      message: `${assignment.registration.person_name} is registered for ${assignment.registration.machine_name}.`,
-      operator: {
-        person_name: assignment.registration.person_name,
-      },
-      registration: assignment.registration,
-      window: assignment.window,
-      verification_method: "registration_pin",
-    });
+    res.status(201).json({ ok: true, operator, message: `${operator.person_name} is registered.` });
   } catch (err) {
     logError("❌ Operator registration failed", err);
     res.status(err.statusCode || 500).json({ error: err.message });
   }
-}
+});
 
-app.post("/api/operator/register", registerOperatorHandler);
+app.patch("/api/operator/admin/operators/:id", async (req, res) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+    const id = req.params.id;
+    const hasPin = req.body?.pin !== undefined;
+    const active = req.body?.is_active;
+    if (!/^\d{1,18}$/.test(id) || (!hasPin && typeof active !== "boolean")) {
+      return res.status(400).json({ error: "Select an operator and an update." });
+    }
+    const pinHash = hasPin ? await hashOperatorPin(requireSixDigitPin(req.body.pin)) : null;
+    const result = await pgPool.query(
+      `
+        UPDATE ${operatorsTable}
+        SET pin_hash = COALESCE($2, pin_hash), is_active = COALESCE($3, is_active)
+        WHERE id = $1
+        RETURNING id, person_name, is_active
+      `,
+      [id, pinHash, typeof active === "boolean" ? active : null]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: "Operator not found." });
 
-app.get("/api/operator/registration-context", (req, res) => {
-  const now = new Date();
-  const windows = Object.keys(SHIFT_WINDOWS).map((shiftCode) => getVerificationWindow(shiftCode, now));
-  res.json({
-    ok: true,
-    current_time: now.toISOString(),
-    current_date: manilaDateKey(now),
-    open_shift: windows.find((window) => window.is_in_window) || null,
-    windows,
-  });
+    operatorPinAttempts.delete(id);
+    res.json({ ok: true, operator: result.rows[0] });
+  } catch (err) {
+    logError("❌ Operator update failed", err);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+app.get("/api/machine-check/context", (req, res) => {
+  const shift = getCurrentProductionShift();
+  res.set("Cache-Control", "no-store");
+  res.json({ shift_code: shift.shift_code, shift_date: shift.shift_date });
 });
 
 app.get("/api/machine-check/status", async (req, res) => {
@@ -2446,7 +2354,6 @@ app.get("/api/machine-check/status", async (req, res) => {
           code: shift.shift_code,
           date: shift.shift_date,
           label: shift.shift_label,
-          confirmation_window: shift.verification_label,
           confirmation_open: shift.confirmation_open,
         },
         state: confirmation ? "CONFIRMED" : registration ? "PENDING" : "NO_REGISTRATION",
@@ -2494,82 +2401,73 @@ app.get("/api/machine-check/status", async (req, res) => {
 app.post("/api/machine-check/confirm", async (req, res) => {
   try {
     const machineId = normalizeMachineId(req.body?.machine);
-    const machineName = String(req.body?.machine_name || "").trim();
-    const pin = normalizePin(req.body?.pin);
-    const now = new Date();
+    const name = normalizeOperatorName(req.body?.person_name);
+    const shiftCode = normalizeShiftCode(req.body?.shift_code);
+    const shiftDate = String(req.body?.shift_date ?? "");
+    const requestId = String(req.body?.request_id ?? "");
+    const currentShift = getCurrentProductionShift();
 
-    if (!machineId || !pin) {
-      return res.status(400).json({
-        error: "Machine and 6-digit PIN are required.",
-      });
+    if (!machineId || !name || name.length > 120 || !shiftCode || !/^\d{4}-\d{2}-\d{2}$/.test(shiftDate)) {
+      return res.status(400).json({ error: "Enter an operator name and select a machine and shift." });
+    }
+    if (!/^[a-zA-Z0-9-]{16,80}$/.test(requestId)) {
+      return res.status(400).json({ error: "Invalid confirmation request. Open Confirm check again." });
     }
 
-    const currentWindow = getCurrentVerificationWindow(now);
-    if (!currentWindow) {
+    const operator = await authenticateOperator(name, requireSixDigitPin(req.body?.pin));
+    const input = { requestId, operator, machineId, shiftCode, shiftDate };
+    const sameProductionDate = shiftDate === currentShift.shift_date;
+    const log = sameProductionDate
+      ? await insertConfirmationLog(input)
+      : await findConfirmationRequest(input);
+
+    if (!log) {
       return res.status(409).json({
-        error: "No confirmation window is open right now.",
+        error: sameProductionDate
+          ? "The operator or machine details changed. Open Confirm check and try again."
+          : "The production date changed. Open Confirm check and select the shift again.",
       });
     }
-
-    requireSixDigitPin(pin);
-
-    const { registration, window } = await findCurrentMachineRegistration({
-      machine: machineId,
-      now,
-    });
-
-    if (!registration) {
-      return res.status(403).json({
-        error: `No operator is registered for ${machineName || machineId} during the current shift.`,
-      });
-    }
-
-    verifyRegistrationPin(pin, registration);
-
-    const machineState = getMachineVerificationState(machineStateFor(machineId), now);
-
-    // A valid registration PIN during the active shift window is the confirmation.
-    // Machine state is still recorded for context, but it does not block confirmation.
-    const verification = {
-      status: "CONFIRMED",
-      label: "Machine check confirmed",
-      machine_required: machineState.required === true,
-      machine_reason: machineState.reason,
-      window,
-      method: "registration_pin",
-    };
-
-    const log = await insertConfirmationLog({
-      registration,
-      machine: machineId,
-      machine_name: machineName || registration.machine_name || machineId,
-      verification,
-    });
 
     res.json({
       ok: true,
-      log: {
-        id: log.id,
-        person_name: log.person_name,
-        created_at: log.created_at,
-      },
-      operator: {
-        person_name: registration.person_name,
-      },
-      machine: {
-        id: machineId,
-        name: machineName || registration.machine_name || machineId,
-      },
-      shift: {
-        code: registration.shift_code,
-        label: SHIFT_WINDOWS[registration.shift_code]?.shiftLabel || registration.shift_code,
-        confirmation_window: SHIFT_WINDOWS[registration.shift_code]?.label || "No data",
-      },
-      verification,
+      log,
+      operator: { person_name: log.person_name },
+      machine: { id: machineId, name: log.machine_name },
+      shift: { code: shiftCode, date: shiftDate, label: PRODUCTION_SHIFTS[shiftCode].label },
     });
   } catch (err) {
-    logError("❌ Machine check confirmation failed", err);
-    res.status(err.statusCode || 500).json({ error: err.message });
+    if (!err.statusCode) logError("❌ Machine check confirmation failed", err);
+    res.status(err.statusCode || 500).json({
+      error: err.statusCode ? err.message : "Unable to save the machine confirmation.",
+    });
+  }
+});
+
+app.post("/api/machine-check/admin/snapshot", async (req, res) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+    const id = String(req.body?.confirmation_id ?? "");
+    if (!/^\d{1,10}$/.test(id) || Number(id) > 2147483647) {
+      return res.status(400).json({ error: "Select a confirmation." });
+    }
+
+    const result = await pgPool.query(
+      `
+        SELECT person_name, machine_name, shift_code, created_at, state_snapshot,
+               to_char(shift_date, 'YYYY-MM-DD') AS shift_date
+        FROM ${confirmationsTable}
+        WHERE id = $1
+      `,
+      [id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: "Confirmation not found." });
+
+    res.set("Cache-Control", "no-store");
+    res.json({ confirmation: result.rows[0] });
+  } catch (err) {
+    logError("❌ Confirmation snapshot failed", err);
+    res.status(500).json({ error: "Unable to load the confirmation snapshot." });
   }
 });
 
@@ -2581,7 +2479,7 @@ async function operatorOverviewHandler(req, res) {
     res.json({
       ok: true,
       ...overview,
-      shiftWindows: SHIFT_WINDOWS,
+      shifts: PRODUCTION_SHIFTS,
     });
   } catch (err) {
     logError("❌ Operator overview failed", err);
@@ -2599,8 +2497,8 @@ app.get("/api/operator/health", async (req, res) => {
     res.json({
       ok: true,
       postgres: true,
-      verificationMethod: "registration_pin",
-      shiftWindows: SHIFT_WINDOWS,
+      verificationMethod: "operator_pin",
+      shifts: PRODUCTION_SHIFTS,
       staleSeconds: MACHINE_DATA_STALE_SECONDS,
     });
   } catch (err) {
@@ -2630,9 +2528,7 @@ if (require.main === module) {
 module.exports = {
   app,
   startServer,
-  getShiftWindowForDate,
-  getVerificationWindow,
-  getCurrentVerificationWindow,
+  getCurrentProductionShift,
   getMachineVerificationState,
   buildConfirmationMatrix,
   normalizeDateRange,

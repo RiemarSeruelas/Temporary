@@ -25,9 +25,9 @@ Machine configuration, operator records, confirmations, and session logs are sto
 - Configurable raw-value meanings
 - Configurable display labels, condition, and color
 - Automatic **No Data** display when real values are unavailable
-- Operator registration by shift
+- Personal operator PIN registration
 - 6-digit PIN registration and confirmation
-- Shift-based machine confirmation workflow
+- Machine confirmations filed by production shift, with snapshots of the reported machine states
 - Confirmation monitoring and history
 - PostgreSQL machine configuration storage
 - PostgreSQL operator and confirmation records
@@ -43,8 +43,8 @@ Machine configuration, operator records, confirmations, and session logs are sto
 | **Machine Monitoring** | View the configured machine, machine segments, and current live status. |
 | **Machine Set Up** | Configure the machine connection, machine image, segments, and Data Mapping. |
 | **Data Mapping** | Assign incoming MQTT / HighByte fields to machine points and define what each received value means. |
-| **Operator** | Register the operator assigned to a machine and shift using the 6-digit PIN. |
-| **Machine Confirmation** | Confirm the registered operator for the current shift using the 6-digit PIN. |
+| **Operator** | Register operators, manage personal PINs, and view confirmation snapshots in Logs. |
+| **Machine Confirmation** | Choose the machine and shift, then confirm with your name and 6-digit personal PIN. |
 | **Operator Admin** | Review operator registration and confirmation records. |
 | **Session Logs** | Store one application usage record when a browser session ends. |
 
@@ -184,33 +184,20 @@ Machine configuration is stored in PostgreSQL and should remain available after 
 
 ### 5. Register an Operator
 
-Open the Operator section and register the operator assigned to the machine and shift.
+Open **Admin → Operator → Registration**. Register each operator once with their name and a chosen 6-digit personal PIN. The operator uses those credentials for any machine and shift. Names are matched without regard to case, so use distinct names for operators who share a name. Use **Reset PIN** or **Disable** in the registered operators list to manage an existing operator.
 
-The registration process includes:
-
-- Operator name
-- Machine
-- Shift
-- 6-digit PIN chosen during registration
-
-Registration can be completed at any time. The PIN is stored as a one-way hash and is not stored as plain text.
+When upgrading from shift-specific registration, enroll each operator here to create their personal PIN. The database stores a salted PIN hash.
 
 ### 6. Confirm a Machine Check
 
-During the active 4-hour confirmation window:
-
 1. Select **Confirm check**.
-2. Enter the same 6-digit PIN used during registration.
-3. The backend identifies the operator currently registered to that machine and shift.
-4. A matching PIN records the confirmation.
-
-Confirmation remains shift-based and is only allowed during the configured 4-hour confirmation window.
+2. Choose the machine and one of the three shifts for the displayed Manila production date. The form starts on the current shift.
+3. Enter your registered name and personal PIN, then select **Confirm check**.
+4. The log records the chosen shift, the actual confirmation time, and the latest reported states of the machine's configured points.
 
 ### 7. Review Operator Records
 
-Authorized Admin users can review operator registration and machine confirmation information from the Operator Admin area.
-
-The available records can be used for monitoring and reporting.
+Open **Admin → Operator → Logs**. Filter by production dates and machine, then select **View snapshot** on a confirmation. The snapshot shows the values saved when that check was confirmed, including the reading receipt time and any stale or missing readings. Earlier confirmations appear with **No snapshot**. Each completed check has its own record, even when the same machine is checked again in one shift.
 
 ### 8. Sign Out / End the Session
 
@@ -234,25 +221,21 @@ The session record includes information such as:
 
 Browser session-end logging is best effort. A sudden power loss, operating-system crash, or forced browser termination may prevent the final session event from being sent.
 
-## Operator Shift Windows
+## Production Shifts
 
-The application currently uses three operator registration / verification windows.
+| Shift | Manila plant time |
+| --- | --- |
+| **1st shift** | 6:00 AM – 2:00 PM |
+| **2nd shift** | 2:00 PM – 10:00 PM |
+| **3rd shift** | 10:00 PM – 6:00 AM |
 
-| Shift | Registration / Verification Window | Full Shift |
-| --- | --- | --- |
-| **Morning** | 6:00 AM - 10:00 AM | 6:00 AM - 2:00 PM |
-| **Afternoon** | 2:00 PM - 6:00 PM | 2:00 PM - 10:00 PM |
-| **Night** | 10:00 PM - 2:00 AM | 10:00 PM - 6:00 AM |
-
-The application uses Manila plant time.
+The production date begins at 6:00 AM Manila. The 3rd shift belongs to the date on which it started. Operators can record a confirmation under any of the three shifts for the displayed production date. For example, a check recorded at 7:15 PM may be filed under the 1st shift, with 7:15 PM recorded as the actual time.
 
 ## Important Rules
 
-- Registration can be completed at any time.
-- Each registration uses a 6-digit PIN chosen by the operator / registrant.
-- The same PIN is required for confirmation.
-- Confirmation is allowed only during the configured 4-hour window for the current shift.
-- The PIN is stored as a one-way hash, not as plain text.
+- Operators confirm with their own registered name and 6-digit PIN.
+- The 6-digit PIN can be used for all shifts.
+- The snapshot uses the configured point mappings and the latest MQTT readings available to the backend at confirmation. Logs fetch the stored readings when an administrator opens a snapshot.
 
 - PostgreSQL is the source of truth for machine configuration.
 - Do not rely on placeholder or default machine data.
@@ -281,6 +264,7 @@ Main tables include:
 ```text
 machine_monitoring
 ├── machine_check_confirmations
+├── operators
 ├── operator_shift_registrations
 ├── machine_configurations
 ├── machine_data_receipts
@@ -313,15 +297,15 @@ The original primary and secondary source-key columns are retained for backward 
 
 ### Operator and Confirmation Data
 
-`operator_shift_registrations` stores the operator assigned to a machine and shift.
+`operators` stores the current operator roster and personal PIN hashes.
 
-`machine_check_confirmations` stores completed machine confirmations.
+`operator_shift_registrations` stores historical machine and shift assignments used for earlier logs.
+
+`machine_check_confirmations` stores completed checks. New checks store the selected shift, actual confirmation time, and point statuses in the `state_snapshot` JSONB column.
 
 `machine_data_receipts` stores machine data-receipt activity used by monitoring and reporting.
 
-Operator identity is not verified by camera or facial recognition. Registration and confirmation use the 6-digit shift-PIN.
-
-### Session Logs### Session Logs
+### Session Logs
 
 `mespack_session_logs` stores one row for completed application sessions.
 
@@ -329,10 +313,10 @@ It is intentionally session-based rather than click-based.
 
 ## Project Structure
 
-Recommended project structure:
+The application source is organized as follows.
 
 ```text
-Temporary2/
+Temporary-master/
 ├── backend/
 │   ├── migration.sql
 │   ├── package.json
@@ -341,11 +325,10 @@ Temporary2/
 ├── src/
 │   ├── App.css
 │   ├── App.jsx
-│   ├── index.css
-│   ├── main.jsx
-│   ├── OperatorExperience.jsx
-│   ├── operatorWorkflow.js
-│   └── Studio.css
+│   └── main.jsx
+│
+├── shared/
+│   └── point-values.mjs
 │
 ├── .dockerignore
 ├── .env
@@ -361,7 +344,7 @@ Temporary2/
 └── vite.config.js
 ```
 
-Keep only one canonical `migration.sql`. The recommended location is:
+The backend applies the schema updates at startup. The source also includes the SQL migration at the following path.
 
 ```text
 backend/migration.sql
@@ -680,15 +663,15 @@ The `source_fields` column should contain the configured fields for each monitor
 
 Confirm that the PIN contains exactly six digits.
 
-Check that:
+Verify the operator and machine details below.
 
 - The operator registration was saved successfully.
-- Confirmation is being attempted during the current shift's 4-hour confirmation window.
-- The confirmation PIN matches the PIN used during registration.
-- An operator is registered for the selected machine and current shift before confirmation.
+- The operator enters the same name and PIN used at registration.
+- The operator account is active.
+- The selected machine is active and the production date is current.
 - The backend and PostgreSQL connection are healthy.
 
-Check:
+Review server logs with the following command.
 
 ```powershell
 docker compose logs --tail=200 backend
@@ -752,12 +735,12 @@ FROM machine_monitoring.machine_points
 ORDER BY machine_id, point_id;
 ```
 
-### Operator Registrations
+### Registered Operators
 
 ```sql
-SELECT *
-FROM machine_monitoring.operator_shift_registrations
-ORDER BY registered_at DESC;
+SELECT id, person_name, is_active
+FROM machine_monitoring.operators
+ORDER BY person_name;
 ```
 
 ### Confirmations
@@ -846,6 +829,7 @@ Dockerfile.frontend
 nginx.conf
 backend/
 src/
+shared/
 package.json
 vite.config.js
 README.md
@@ -882,9 +866,9 @@ Before production / UAT deployment, confirm:
 - Save Configuration persists after refresh
 - Flexible fields persist after refresh
 - Operator registration works
-- 6-digit PIN registration works during each 4-hour shift window
-- PIN confirmation records the operator registered for the current machine and shift
-- Machine confirmation works
+- A registered operator can confirm any selected shift with their personal PIN
+- Logs show the selected shift and actual confirmation time
+- **View snapshot** shows the saved machine readings
 - Session logs are created
 - Another permitted computer can open port `5054`
 - `.env` is not committed to Git

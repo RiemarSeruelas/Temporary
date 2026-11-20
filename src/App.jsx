@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
+import { DEFAULT_POINT_VALUE_RULES, interpretIncomingValue, payloadValueAtPath } from "../shared/point-values.mjs";
 const SHIFT_OPTIONS = [
-  { value: "MORNING", label: "1st shift", hours: "6 AM - 2 PM", window: "6 AM - 10 AM" },
-  { value: "AFTERNOON", label: "2nd shift", hours: "2 PM - 10 PM", window: "2 PM - 6 PM" },
-  { value: "NIGHT", label: "3rd shift", hours: "10 PM - 6 AM", window: "10 PM - 2 AM" },
+  { value: "MORNING", label: "1st shift", hours: "6 AM - 2 PM" },
+  { value: "AFTERNOON", label: "2nd shift", hours: "2 PM - 10 PM" },
+  { value: "NIGHT", label: "3rd shift", hours: "10 PM - 6 AM" },
 ];
 
-async function postJson(url, body) {
+async function sendJson(url, body, { method = "POST", signal } = {}) {
   const response = await fetch(url, {
-    method: "POST",
+    method,
+    signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -17,9 +19,9 @@ async function postJson(url, body) {
   return data;
 }
 
-function localDateKey(date = new Date()) {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
-  return local.toISOString().slice(0, 10);
+function productionDateKey(date = new Date()) {
+  // Manila is UTC+08:00 and the production date rolls over at 06:00 Manila.
+  return new Date(date.getTime() + (8 - 6) * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 function addLocalDays(dateKey, days) {
@@ -51,6 +53,17 @@ function formatTime(value) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function formatManilaDateTime(value) {
+  if (!value) return "No data";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "No data";
+  return date.toLocaleString(undefined, {
+    timeZone: "Asia/Manila",
+    dateStyle: "medium",
+    timeStyle: "medium",
+  }) + " (Manila)";
 }
 
 function safeText(value) {
@@ -198,54 +211,63 @@ function MachineSelect({ options = [], value, onChange, disabled = false, fallba
 
 function ConfirmationModal({ machine, machines = [], theme, onClose, onConfirmed }) {
   const machineOptions = (machines || []).filter((item) => item?.is_active !== false && item?.id);
-  const initialMachineId = machineOptions.some((item) => item.id === machine?.id)
-    ? machine.id
-    : machineOptions[0]?.id || machine?.id || "";
-  const [selectedMachineId, setSelectedMachineId] = useState(initialMachineId);
+  const [machineId, setMachineId] = useState(machine?.id || machineOptions[0]?.id || "");
+  const [personName, setPersonName] = useState("");
   const [pin, setPin] = useState("");
   const [showPin, setShowPin] = useState(false);
+  const [shiftCode, setShiftCode] = useState("");
+  const [shiftDate, setShiftDate] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const machineOptionIds = machineOptions.map((item) => item.id).join("|");
+  const attemptRef = useRef(null);
 
-  const selectedMachine = machineOptions.find((item) => item.id === selectedMachineId)
-    || machine
-    || machineOptions[0]
-    || null;
+  const selectedMachine = machineOptions.find((item) => item.id === machineId) || machineOptions[0];
 
   useEffect(() => {
-    const nextMachineId = machineOptions.some((item) => item.id === machine?.id)
-      ? machine.id
-      : machineOptions[0]?.id || machine?.id || "";
-    setSelectedMachineId((current) => (
-      machineOptions.some((item) => item.id === current) ? current : nextMachineId
-    ));
-  }, [machine?.id, machineOptionIds]);
+    const controller = new AbortController();
+
+    async function loadShift() {
+      try {
+        const response = await fetch("/api/machine-check/context", { signal: controller.signal, cache: "no-store" });
+        if (!response.ok) throw new Error("Unable to load the production date. Reopen Confirm check to try again.");
+        const context = await response.json();
+        setShiftDate(context.shift_date);
+        setShiftCode(context.shift_code);
+      } catch (requestError) {
+        if (requestError.name !== "AbortError") setError(requestError.message);
+      }
+    }
+
+    loadShift();
+    return () => controller.abort();
+  }, []);
 
   async function confirmOperator(event) {
-    event?.preventDefault?.();
-    if (loading) return;
-    if (pin.length !== 6) {
-      setError("Enter your PIN.");
-      return;
+    event.preventDefault();
+    if (loading || !selectedMachine || !shiftDate || !shiftCode || !personName.trim() || pin.length !== 6) return;
+
+    const check = {
+      machine: selectedMachine.id,
+      person_name: personName.trim(),
+      shift_code: shiftCode,
+      shift_date: shiftDate,
+    };
+    const checkKey = JSON.stringify(check);
+    if (attemptRef.current?.checkKey !== checkKey) {
+      attemptRef.current = { checkKey, id: createAppSessionId() };
     }
 
     setLoading(true);
     setError("");
     try {
-      if (!selectedMachine?.id) {
-        setError("Select a machine.");
-        return;
-      }
-
-      const data = await postJson("/api/machine-check/confirm", {
-        machine: selectedMachine.id,
-        machine_name: selectedMachine.name,
+      const data = await sendJson("/api/machine-check/confirm", {
+        ...check,
         pin,
+        request_id: attemptRef.current.id,
       });
 
-      const message = `${safeText(data.operator?.person_name)} confirmed ${safeText(data.machine?.name)}.`;
-
+      const shift = SHIFT_OPTIONS.find((item) => item.value === data.shift.code);
+      const message = `${data.operator.person_name} confirmed ${data.machine.name} for ${shift.label}.`;
       onConfirmed?.(message);
       onClose();
     } catch (confirmError) {
@@ -256,52 +278,76 @@ function ConfirmationModal({ machine, machines = [], theme, onClose, onConfirmed
   }
 
   return (
-    <div className="confirmation-backdrop" data-theme={theme} onClick={onClose}>
+    <div className="confirmation-backdrop" data-theme={theme} onClick={loading ? undefined : onClose}>
       <section
         className="confirmation-dialog confirmation-pin-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label="Operator PIN confirmation"
+        aria-labelledby="machine-confirmation-title"
         onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && !loading) onClose();
+        }}
       >
-        <button className="confirmation-close" onClick={onClose} aria-label="Close">×</button>
+        <button className="confirmation-close" type="button" onClick={onClose} aria-label="Close" disabled={loading}>×</button>
 
         <form className="confirmation-pin-stage" onSubmit={confirmOperator}>
-          <div className="confirmation-pin-icon" aria-hidden="true"><span>•••</span><span>•••</span></div>
-          <span className="confirmation-pin-kicker">Machine confirmation</span>
-          <h2>Enter your PIN</h2>
+          <h2 id="machine-confirmation-title">Confirm machine check</h2>
 
           <div className="confirmation-pin-machine">
             <small>Machine</small>
             <MachineSelect
-              options={machineOptions.length ? machineOptions : machine ? [machine] : []}
-              value={selectedMachineId}
-              onChange={(machineId) => {
-                setSelectedMachineId(machineId);
-                setPin("");
-                setShowPin(false);
-                setError("");
-              }}
+              options={machineOptions}
+              value={selectedMachine?.id || ""}
+              onChange={setMachineId}
               disabled={loading}
-              fallback={safeText(machine?.name || "No Data")}
             />
           </div>
 
-          <PinInput
-            value={pin}
-            onChange={setPin}
-            disabled={loading}
-            autoFocus
-            ariaLabel="PIN for machine confirmation"
-            revealed={showPin}
-            onToggleReveal={() => setShowPin((current) => !current)}
-          />
+          <label className="confirmation-operator-field">
+            <span>Shift</span>
+            <select value={shiftCode} onChange={(event) => setShiftCode(event.target.value)} disabled={loading || !shiftDate}>
+              {!shiftDate && <option value="">{error ? "Shift unavailable" : "Loading shifts…"}</option>}
+              {SHIFT_OPTIONS.map((shift) => (
+                <option key={shift.value} value={shift.value}>{shift.label} · {shift.hours}</option>
+              ))}
+            </select>
+            {shiftDate && <small>Production date {formatDate(shiftDate)} · Manila</small>}
+          </label>
 
-          {error && <div className="confirmation-pin-error">{safeText(error)}</div>}
+          <label className="confirmation-operator-field">
+            <span>Operator name</span>
+            <input
+              autoFocus
+              autoComplete="off"
+              maxLength={120}
+              value={personName}
+              onChange={(event) => setPersonName(event.target.value)}
+              disabled={loading}
+            />
+          </label>
+
+          <div className="confirmation-operator-field">
+            <span>Personal PIN</span>
+            <PinInput
+              value={pin}
+              onChange={setPin}
+              disabled={loading}
+              ariaLabel="6-digit operator PIN"
+              revealed={showPin}
+              onToggleReveal={() => setShowPin((current) => !current)}
+            />
+          </div>
+
+          {error && <div className="confirmation-pin-error" role="alert">{error}</div>}
 
           <div className="confirmation-actions">
-            <button type="button" onClick={onClose}>Cancel</button>
-            <button className="primary" type="submit" disabled={loading || pin.length !== 6}>
+            <button type="button" onClick={onClose} disabled={loading}>Cancel</button>
+            <button
+              className="primary"
+              type="submit"
+              disabled={loading || !selectedMachine || !shiftDate || !shiftCode || !personName.trim() || pin.length !== 6}
+            >
               {loading ? "Confirming…" : "Confirm check"}
             </button>
           </div>
@@ -311,25 +357,108 @@ function ConfirmationModal({ machine, machines = [], theme, onClose, onConfirmed
   );
 }
 
-function MatrixCell({ cell }) {
+function MatrixCell({ cell, onViewSnapshot }) {
   if (!cell || cell.state === "NO_DATA") return <span className="operator-cell-empty">No Data</span>;
   if (cell.state === "FUTURE") return <span className="operator-cell-future">—</span>;
 
   return (
     <div className="operator-cell-entries">
       {cell.entries.map((entry) => (
-        <div className={`operator-log-entry ${String(entry.state).toLowerCase().replaceAll("_", "-")}`} key={entry.registration_id}>
+        <div
+          className={`operator-log-entry ${String(entry.state).toLowerCase().replaceAll("_", "-")}`}
+          key={entry.confirmation_id ? `confirmation-${entry.confirmation_id}` : `registration-${entry.registration_id}`}
+        >
           <i aria-hidden="true" />
           <span><strong>{safeText(entry.person_name)}</strong><small>{safeText(entry.machine_name)}</small></span>
-          <em>
-            {entry.state === "CONFIRMED" && `Confirmed ${formatTime(entry.confirmed_at)}`}
-            {entry.state === "MISSED" && "Not confirmed"}
-            {entry.state === "MACHINE_OFF" && "Machine off"}
-            {entry.state === "FUTURE" && "—"}
-          </em>
+          <div className="operator-log-entry-actions">
+            <em>
+              {entry.state === "CONFIRMED" && `Confirmed ${formatTime(entry.confirmed_at)}`}
+              {entry.state === "MISSED" && "Not confirmed"}
+              {entry.state === "MACHINE_OFF" && "Machine off"}
+              {entry.state === "FUTURE" && "—"}
+            </em>
+            {entry.has_snapshot ? (
+              <button type="button" className="operator-snapshot-link" onClick={() => onViewSnapshot(entry.confirmation_id)}>
+                View snapshot
+              </button>
+            ) : entry.state === "CONFIRMED" && <small>No snapshot</small>}
+          </div>
         </div>
       ))}
     </div>
+  );
+}
+
+function SnapshotDialog({ confirmationId, password, onClose }) {
+  const dialogRef = useRef(null);
+  const [record, setRecord] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    dialogRef.current.showModal();
+    const controller = new AbortController();
+    sendJson("/api/machine-check/admin/snapshot", {
+      confirmation_id: confirmationId,
+      password,
+    }, { signal: controller.signal })
+      .then((result) => setRecord(result.confirmation))
+      .catch((requestError) => {
+        if (requestError.name !== "AbortError") setError(requestError.message);
+      });
+    return () => controller.abort();
+  }, [confirmationId, password]);
+
+  const snapshot = record?.state_snapshot;
+  const pointsByArea = new Map();
+  for (const point of snapshot?.points || []) {
+    if (!pointsByArea.has(point.area)) pointsByArea.set(point.area, []);
+    pointsByArea.get(point.area).push(point);
+  }
+
+  return (
+    <dialog ref={dialogRef} onClose={onClose} className="operator-snapshot-dialog" aria-labelledby="snapshot-title">
+      <header>
+        <h2 id="snapshot-title">Confirmation snapshot</h2>
+        <button type="button" onClick={() => dialogRef.current.close()}>Close</button>
+      </header>
+      {error && <p role="alert" className="operator-notice error">{error}</p>}
+      {!record && !error && <p role="status">Loading snapshot…</p>}
+      {record && (
+        <>
+          <dl className="operator-snapshot-summary">
+            <div><dt>Machine</dt><dd>{safeText(record.machine_name)}</dd></div>
+            <div><dt>Operator</dt><dd>{safeText(record.person_name)}</dd></div>
+            <div><dt>Selected shift</dt><dd>{getShiftLabel(record.shift_code)} · {formatDate(record.shift_date)}</dd></div>
+            <div><dt>Confirmed at</dt><dd>{formatManilaDateTime(record.created_at)}</dd></div>
+            <div><dt>Reading received at</dt><dd>{formatManilaDateTime(snapshot?.reading_received_at)}</dd></div>
+          </dl>
+          {!snapshot && <p>No snapshot was saved for this confirmation.</p>}
+          {snapshot?.data_state === "stale" && <p className="operator-snapshot-note">The last machine reading was stale when this check was confirmed.</p>}
+          {snapshot?.data_state === "no_data" && <p className="operator-snapshot-note">No machine reading was available when this check was confirmed.</p>}
+          {snapshot && !pointsByArea.size && <p>No monitoring points were configured for this check.</p>}
+          {[...pointsByArea].map(([area, points]) => (
+            <section className="operator-snapshot-area" key={area}>
+              <h3>{area}</h3>
+              <ul>
+                {points.map((point) => (
+                  <li className="operator-snapshot-point" key={point.id}>
+                    <strong>{point.name}</strong>
+                    <div className="operator-snapshot-states">
+                      {point.fields.map((field, index) => (
+                        <span key={index} style={{ "--snapshot-state-color": field.color }}>
+                          {field.label} <b>{field.state}</b>
+                        </span>
+                      ))}
+                      {!point.fields.length && <span>No Data</span>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </>
+      )}
+    </dialog>
   );
 }
 
@@ -438,54 +567,32 @@ function excelLogCell(cell) {
 }
 
 function OperatorAdminPage({ machines, password }) {
-  const today = localDateKey();
+  const today = productionDateKey();
   const [tab, setTab] = useState("registration");
-  const [context, setContext] = useState(null);
-  const [overview, setOverview] = useState({ matrix: [], registrations: [] });
+  const [overview, setOverview] = useState({ matrix: [], operators: [] });
   const [filters, setFilters] = useState({
     date_from: addLocalDays(today, -7),
     date_to: addLocalDays(today, 2),
     machine: "",
   });
-  const [form, setForm] = useState({ person_name: "", machine: machines?.[0]?.id || "", shift_code: "MORNING", pin: "" });
+  const [form, setForm] = useState({ person_name: "", pin: "" });
+  const [editingOperator, setEditingOperator] = useState(null);
+  const [snapshotId, setSnapshotId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   const machineOptions = (machines || []).filter((machine) => machine.is_active !== false);
-  const selectedMachine = machineOptions.find((item) => item.id === form.machine) || machineOptions[0] || null;
-  const registrationRows = useMemo(() => overview.registrations || [], [overview.registrations]);
 
   useEffect(() => {
-    loadContext();
     loadOverview();
   }, []);
-
-  useEffect(() => {
-    if (!form.machine && machineOptions[0]?.id) {
-      setForm((current) => ({ ...current, machine: machineOptions[0].id }));
-    }
-  }, [machineOptions, form.machine]);
-
-  async function loadContext() {
-    try {
-      const response = await fetch("/api/operator/registration-context");
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Unable to load shift windows.");
-      setContext(data);
-      if (data.open_shift?.shift_code) {
-        setForm((current) => ({ ...current, shift_code: data.open_shift.shift_code }));
-      }
-    } catch (requestError) {
-      setError(requestError.message);
-    }
-  }
 
   async function loadOverview(nextFilters = filters) {
     setLoading(true);
     setError("");
     try {
-      const data = await postJson("/api/operator/admin/overview", { password, ...nextFilters });
+      const data = await sendJson("/api/operator/admin/overview", { password, ...nextFilters });
       setOverview(data);
     } catch (requestError) {
       setError(requestError.message);
@@ -592,13 +699,24 @@ function OperatorAdminPage({ machines, password }) {
     URL.revokeObjectURL(url);
   }
 
-  async function registerOperator() {
+  function storeOperator(operator) {
+    setOverview((current) => ({
+      ...current,
+      operators: [...current.operators.filter((row) => row.id !== operator.id), operator]
+        .sort((first, second) => first.person_name.localeCompare(second.person_name)),
+    }));
+  }
+
+  function resetForm() {
+    setEditingOperator(null);
+    setForm({ person_name: "", pin: "" });
+  }
+
+  async function saveOperator(event) {
+    event.preventDefault();
+    if (loading) return;
     if (!form.person_name.trim()) {
       setError("Enter the operator name.");
-      return;
-    }
-    if (!selectedMachine) {
-      setError("No Data: add a machine before registering an operator.");
       return;
     }
     if (form.pin.length !== 6) {
@@ -609,23 +727,48 @@ function OperatorAdminPage({ machines, password }) {
     setError("");
     setMessage("");
     try {
-      const data = await postJson("/api/operator/register", {
-        password,
-        person_name: form.person_name.trim(),
-        machine: form.machine,
-        machine_name: selectedMachine?.name,
-        shift_code: form.shift_code,
-        pin: form.pin,
-      });
-      setMessage(data.message || "Operator registered.");
-      setForm((current) => ({ ...current, person_name: "", pin: "" }));
-      await Promise.all([loadContext(), loadOverview()]);
+      const data = editingOperator
+        ? await sendJson(
+          `/api/operator/admin/operators/${editingOperator.id}`,
+          { password, pin: form.pin },
+          { method: "PATCH" }
+        )
+        : await sendJson("/api/operator/register", { password, ...form });
+      storeOperator(data.operator);
+      setMessage(editingOperator ? "Operator PIN updated." : data.message);
+      resetForm();
     } catch (requestError) {
       setError(requestError.message);
       setForm((current) => ({ ...current, pin: "" }));
     } finally {
       setLoading(false);
     }
+  }
+
+  async function toggleOperator(row) {
+    setLoading(true);
+    setError("");
+    setMessage("");
+    try {
+      const data = await sendJson(
+        `/api/operator/admin/operators/${row.id}`,
+        { password, is_active: !row.is_active },
+        { method: "PATCH" }
+      );
+      storeOperator(data.operator);
+      setMessage(data.operator.is_active ? "Operator enabled." : "Operator disabled.");
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function editPin(row) {
+    setEditingOperator(row);
+    setForm({ person_name: row.person_name, pin: "" });
+    setMessage("");
+    setError("");
   }
 
   function selectTab(nextTab) {
@@ -652,30 +795,18 @@ function OperatorAdminPage({ machines, password }) {
 
       {tab === "registration" && (
         <div className="operator-registration-layout">
-          <form
-            className="operator-registration-card"
-            onSubmit={(event) => {
-              event.preventDefault();
-              registerOperator();
-            }}
-          >
-            <div className="operator-section-heading"><span>Register shift</span><strong>Operator assignment</strong></div>
+          <form className="operator-registration-card" onSubmit={saveOperator}>
+            <div className="operator-section-heading"><strong>{editingOperator ? "Reset personal PIN" : "Register an operator"}</strong></div>
             <div className="operator-registration-fields">
               <label className="operator-name-field">
                 <span>Operator name</span>
-                <input value={form.person_name} onChange={(event) => setForm((current) => ({ ...current, person_name: event.target.value }))} autoComplete="off" />
-              </label>
-              <label>
-                <span>Machine</span>
-                <select value={form.machine} onChange={(event) => setForm((current) => ({ ...current, machine: event.target.value }))}>
-                  {machineOptions.length ? machineOptions.map((item) => <option value={item.id} key={item.id}>{item.name}</option>) : <option value="">No Data</option>}
-                </select>
-              </label>
-              <label>
-                <span>Shift</span>
-                <select value={form.shift_code} onChange={(event) => setForm((current) => ({ ...current, shift_code: event.target.value }))}>
-                  {SHIFT_OPTIONS.map((shift) => <option value={shift.value} key={shift.value}>{shift.label} · {shift.hours}</option>)}
-                </select>
+                <input
+                  value={form.person_name}
+                  onChange={(event) => setForm((current) => ({ ...current, person_name: event.target.value }))}
+                  disabled={loading || Boolean(editingOperator)}
+                  autoComplete="off"
+                  maxLength={120}
+                />
               </label>
               <label className="operator-registration-pin">
                 <span>6-digit PIN</span>
@@ -691,23 +822,27 @@ function OperatorAdminPage({ machines, password }) {
               <button
                 className="primary"
                 type="submit"
-                disabled={loading || form.pin.length !== 6 || !selectedMachine}
+                disabled={loading || form.pin.length !== 6 || !form.person_name.trim()}
               >
-                {loading ? "Registering…" : "Register operator"}
+                {editingOperator ? "Save new PIN" : "Register operator"}
               </button>
+              {editingOperator && <button type="button" onClick={resetForm} disabled={loading}>Cancel</button>}
             </div>
           </form>
 
           <section className="operator-assignments-card">
-            <div className="operator-section-heading"><span>Assignments</span><strong>Registered shifts</strong></div>
+            <div className="operator-section-heading"><strong>Registered operators</strong></div>
             <div className="operator-assignment-list">
-              {registrationRows.length ? registrationRows.map((row) => (
-                <div className="operator-assignment-row" key={row.id}>
+              {overview.operators.length ? overview.operators.map((row) => (
+                <div className={`operator-assignment-row${row.is_active ? "" : " is-disabled"}`} key={row.id}>
                   <i aria-hidden="true" />
-                  <span><strong>{safeText(row.person_name)}</strong><small>{safeText(row.machine_name)}</small></span>
-                  <span><strong>{getShiftLabel(row.shift_code)}</strong><small>{formatDate(row.shift_date)}</small></span>
+                  <span><strong>{row.person_name}</strong><small>{row.is_active ? "Active" : "Disabled"}</small></span>
+                  <div className="operator-roster-actions">
+                    <button type="button" onClick={() => editPin(row)} disabled={loading}>Reset PIN</button>
+                    <button type="button" onClick={() => toggleOperator(row)} disabled={loading}>{row.is_active ? "Disable" : "Enable"}</button>
+                  </div>
                 </div>
-              )) : <div className="operator-empty-state">No Data</div>}
+              )) : <div className="operator-empty-state">{loading ? "Loading operators…" : "No operators registered"}</div>}
             </div>
           </section>
         </div>
@@ -729,7 +864,9 @@ function OperatorAdminPage({ machines, password }) {
                 {(overview.matrix || []).length ? [...overview.matrix].reverse().map((row) => (
                   <tr key={row.date}>
                     <th><strong>{formatDate(row.date)}</strong><span>{row.date === today ? "Today" : row.is_future ? "Future" : ""}</span></th>
-                    {SHIFT_OPTIONS.map((shift) => <td key={shift.value}><MatrixCell cell={row.shifts?.[shift.value]} /></td>)}
+                    {SHIFT_OPTIONS.map((shift) => (
+                      <td key={shift.value}><MatrixCell cell={row.shifts?.[shift.value]} onViewSnapshot={setSnapshotId} /></td>
+                    ))}
                   </tr>
                 )) : <tr><td colSpan={4}><div className="operator-empty-state">No Data</div></td></tr>}
               </tbody>
@@ -737,6 +874,7 @@ function OperatorAdminPage({ machines, password }) {
           </div>
         </section>
       )}
+      {snapshotId !== null && <SnapshotDialog confirmationId={snapshotId} password={password} onClose={() => setSnapshotId(null)} />}
     </section>
   );
 }
@@ -778,18 +916,6 @@ const DEFAULT_MACHINE_RECORD = {
 };
 
 const FIXED_MACHINE_CANVAS_ASPECT = 2.1;
-
-const DEFAULT_POINT_VALUE_RULES = {
-  primary: [
-    { value: "1", label: "Closed", severity: "safe", color: "#22c55e" },
-    { value: "0", label: "Open", severity: "warning", color: "#f59e0b" },
-  ],
-  secondary: [
-    { value: "1", label: "Locked", severity: "safe", color: "#22c55e" },
-    { value: "0", label: "Unlocked", severity: "danger", color: "#ef4444" },
-  ],
-  fallback: { label: "Unknown", severity: "warning", color: "#f59e0b" },
-};
 
 const VALUE_SEVERITIES = [
   { value: "safe", label: "Good" },
@@ -1064,7 +1190,7 @@ export default function App() {
           <form className="admin-gate" onSubmit={enterAsAdmin} onClick={(event) => event.stopPropagation()}>
             <div className="admin-gate-brand" aria-hidden="true"><i /><i /><i /><i /></div>
             <div className="admin-gate-heading">
-              <div><span>Administration</span><h2>Open machine setup</h2><p>Enter the administrator password to manage machines and operator assignments.</p></div>
+              <div><span>Administration</span><h2>Open machine setup</h2><p>Enter the administrator password to manage machines and operators.</p></div>
               <button type="button" onClick={closeAdminGate} aria-label="Close">×</button>
             </div>
             <label htmlFor="dashboard-admin-password">Admin password</label>
@@ -1239,54 +1365,6 @@ function pointIdsFromText(value) {
 function availableFieldLabel(fieldKey) {
   const parts = String(fieldKey || "").split(".").filter(Boolean);
   return parts[parts.length - 1] || "Data point";
-}
-
-function payloadValueAtPath(payload, pathValue) {
-  if (!payload || !pathValue) return undefined;
-  if (Object.prototype.hasOwnProperty.call(payload, pathValue)) return payload[pathValue];
-  return String(pathValue)
-    .split(".")
-    .filter(Boolean)
-    .reduce((current, part) => current?.[part], payload);
-}
-
-function canonicalIncomingValue(value) {
-  if (value === undefined) return "__missing__";
-  if (value === null) return "null";
-  if (typeof value === "boolean") return value ? "1" : "0";
-  if (typeof value === "number") return Number.isFinite(value) ? String(value) : String(value).toLowerCase();
-  const normalized = String(value).trim().toLowerCase();
-  if (["true", "on", "yes"].includes(normalized)) return "1";
-  if (["false", "off", "no"].includes(normalized)) return "0";
-  return normalized;
-}
-
-function interpretIncomingValue(rawValue, channelRules, fallback) {
-  if (rawValue === undefined || rawValue === null || rawValue === "") {
-    return {
-      rawValue,
-      rawLabel: "No Data",
-      label: "No Data",
-      className: "neutral",
-      color: "#64748b",
-      matched: false,
-    };
-  }
-  const canonicalValue = canonicalIncomingValue(rawValue);
-  const matchedRule = (Array.isArray(channelRules) ? channelRules : []).find((rule) => (
-    canonicalIncomingValue(rule.value) === canonicalValue
-  ));
-  const resolved = matchedRule || fallback || DEFAULT_POINT_VALUE_RULES.fallback;
-  return {
-    rawValue,
-    rawLabel: String(rawValue),
-    label: String(resolved.label || rawValue),
-    className: ["safe", "warning", "danger", "neutral"].includes(resolved.severity)
-      ? resolved.severity
-      : "neutral",
-    color: resolved.color || "#64748b",
-    matched: Boolean(matchedRule),
-  };
 }
 
 function pointInterpretation(point, payload) {

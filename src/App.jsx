@@ -210,71 +210,49 @@ function MachineSelect({ options = [], value, onChange, disabled = false, fallba
 }
 
 function ConfirmationModal({ machine, machines = [], theme, onClose, onConfirmed }) {
-  const machineOptions = (machines || []).filter((item) => item?.is_active !== false && item?.id);
+  const machineOptions = machines.filter((item) => item?.is_active !== false && item?.id);
   const [machineId, setMachineId] = useState(machine?.id || machineOptions[0]?.id || "");
-  const [personName, setPersonName] = useState("");
   const [pin, setPin] = useState("");
   const [showPin, setShowPin] = useState(false);
-  const [shiftCode, setShiftCode] = useState("");
-  const [shiftDate, setShiftDate] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const attemptRef = useRef(null);
+  const requestId = useRef(null);
 
   const selectedMachine = machineOptions.find((item) => item.id === machineId) || machineOptions[0];
 
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function loadShift() {
-      try {
-        const response = await fetch("/api/machine-check/context", { signal: controller.signal, cache: "no-store" });
-        if (!response.ok) throw new Error("Unable to load the production date. Reopen Confirm check to try again.");
-        const context = await response.json();
-        setShiftDate(context.shift_date);
-        setShiftCode(context.shift_code);
-      } catch (requestError) {
-        if (requestError.name !== "AbortError") setError(requestError.message);
-      }
-    }
-
-    loadShift();
-    return () => controller.abort();
-  }, []);
-
   async function confirmOperator(event) {
     event.preventDefault();
-    if (loading || !selectedMachine || !shiftDate || !shiftCode || !personName.trim() || pin.length !== 6) return;
-
-    const check = {
-      machine: selectedMachine.id,
-      person_name: personName.trim(),
-      shift_code: shiftCode,
-      shift_date: shiftDate,
-    };
-    const checkKey = JSON.stringify(check);
-    if (attemptRef.current?.checkKey !== checkKey) {
-      attemptRef.current = { checkKey, id: createAppSessionId() };
-    }
+    if (loading || !selectedMachine || pin.length !== 6) return;
+    if (!requestId.current) requestId.current = createAppSessionId();
 
     setLoading(true);
     setError("");
     try {
       const data = await sendJson("/api/machine-check/confirm", {
-        ...check,
+        machine: selectedMachine.id,
         pin,
-        request_id: attemptRef.current.id,
+        request_id: requestId.current,
       });
-
-      const shift = SHIFT_OPTIONS.find((item) => item.value === data.shift.code);
-      const message = `${data.operator.person_name} confirmed ${data.machine.name} for ${shift.label}.`;
-      onConfirmed?.(message);
+      onConfirmed?.(`Machine check confirmed for ${data.machine.name}.`);
       onClose();
     } catch (confirmError) {
       setError(confirmError.message);
     } finally {
       setLoading(false);
     }
+  }
+
+  function selectMachine(id) {
+    setMachineId(id);
+    setPin("");
+    setShowPin(false);
+    setError("");
+    requestId.current = null;
+  }
+
+  function changePin(value) {
+    if (value !== pin) requestId.current = null;
+    setPin(value);
   }
 
   return (
@@ -299,40 +277,18 @@ function ConfirmationModal({ machine, machines = [], theme, onClose, onConfirmed
             <MachineSelect
               options={machineOptions}
               value={selectedMachine?.id || ""}
-              onChange={setMachineId}
+              onChange={selectMachine}
               disabled={loading}
             />
           </div>
 
-          <label className="confirmation-operator-field">
-            <span>Shift</span>
-            <select value={shiftCode} onChange={(event) => setShiftCode(event.target.value)} disabled={loading || !shiftDate}>
-              {!shiftDate && <option value="">{error ? "Shift unavailable" : "Loading shifts…"}</option>}
-              {SHIFT_OPTIONS.map((shift) => (
-                <option key={shift.value} value={shift.value}>{shift.label} · {shift.hours}</option>
-              ))}
-            </select>
-            {shiftDate && <small>Production date {formatDate(shiftDate)} · Manila</small>}
-          </label>
-
-          <label className="confirmation-operator-field">
-            <span>Operator name</span>
-            <input
-              autoFocus
-              autoComplete="off"
-              maxLength={120}
-              value={personName}
-              onChange={(event) => setPersonName(event.target.value)}
-              disabled={loading}
-            />
-          </label>
-
           <div className="confirmation-operator-field">
-            <span>Personal PIN</span>
+            <span>6-digit PIN</span>
             <PinInput
               value={pin}
-              onChange={setPin}
+              onChange={changePin}
               disabled={loading}
+              autoFocus
               ariaLabel="6-digit operator PIN"
               revealed={showPin}
               onToggleReveal={() => setShowPin((current) => !current)}
@@ -343,11 +299,7 @@ function ConfirmationModal({ machine, machines = [], theme, onClose, onConfirmed
 
           <div className="confirmation-actions">
             <button type="button" onClick={onClose} disabled={loading}>Cancel</button>
-            <button
-              className="primary"
-              type="submit"
-              disabled={loading || !selectedMachine || !shiftDate || !shiftCode || !personName.trim() || pin.length !== 6}
-            >
+            <button className="primary" type="submit" disabled={loading || !selectedMachine || pin.length !== 6}>
               {loading ? "Confirming…" : "Confirm check"}
             </button>
           </div>
@@ -575,7 +527,7 @@ function OperatorAdminPage({ machines, password }) {
     date_to: addLocalDays(today, 2),
     machine: "",
   });
-  const [form, setForm] = useState({ person_name: "", pin: "" });
+  const [form, setForm] = useState({ person_name: "", machine: "", pin: "" });
   const [editingOperator, setEditingOperator] = useState(null);
   const [snapshotId, setSnapshotId] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -709,7 +661,7 @@ function OperatorAdminPage({ machines, password }) {
 
   function resetForm() {
     setEditingOperator(null);
-    setForm({ person_name: "", pin: "" });
+    setForm({ person_name: "", machine: "", pin: "" });
   }
 
   async function saveOperator(event) {
@@ -717,6 +669,10 @@ function OperatorAdminPage({ machines, password }) {
     if (loading) return;
     if (!form.person_name.trim()) {
       setError("Enter the operator name.");
+      return;
+    }
+    if (!form.machine) {
+      setError("Select a machine.");
       return;
     }
     if (form.pin.length !== 6) {
@@ -730,12 +686,12 @@ function OperatorAdminPage({ machines, password }) {
       const data = editingOperator
         ? await sendJson(
           `/api/operator/admin/operators/${editingOperator.id}`,
-          { password, pin: form.pin },
+          { password, machine: form.machine, pin: form.pin },
           { method: "PATCH" }
         )
         : await sendJson("/api/operator/register", { password, ...form });
       storeOperator(data.operator);
-      setMessage(editingOperator ? "Operator PIN updated." : data.message);
+      setMessage(editingOperator?.machine_id ? "Operator PIN updated." : data.message || "Operator assigned to the machine.");
       resetForm();
     } catch (requestError) {
       setError(requestError.message);
@@ -766,9 +722,33 @@ function OperatorAdminPage({ machines, password }) {
 
   function editPin(row) {
     setEditingOperator(row);
-    setForm({ person_name: row.person_name, pin: "" });
+    setForm({ person_name: row.person_name, machine: row.machine_id || "", pin: "" });
     setMessage("");
     setError("");
+  }
+
+  async function deleteOperator(row) {
+    if (loading) return;
+    const machine = machines.find((item) => item.id === row.machine_id);
+    const name = machine ? `${row.person_name} from ${machine.name}` : row.person_name;
+    if (!window.confirm(`Delete ${name}?`)) return;
+
+    setLoading(true);
+    setError("");
+    setMessage("");
+    try {
+      await sendJson(`/api/operator/admin/operators/${row.id}`, { password }, { method: "DELETE" });
+      setOverview((current) => ({
+        ...current,
+        operators: current.operators.filter((operator) => operator.id !== row.id),
+      }));
+      if (editingOperator?.id === row.id) resetForm();
+      setMessage(`${row.person_name} deleted.`);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function selectTab(nextTab) {
@@ -796,7 +776,9 @@ function OperatorAdminPage({ machines, password }) {
       {tab === "registration" && (
         <div className="operator-registration-layout">
           <form className="operator-registration-card" onSubmit={saveOperator}>
-            <div className="operator-section-heading"><strong>{editingOperator ? "Reset personal PIN" : "Register an operator"}</strong></div>
+            <div className="operator-section-heading">
+              <strong>{editingOperator ? (editingOperator.machine_id ? "Reset PIN" : "Assign machine") : "Register an operator"}</strong>
+            </div>
             <div className="operator-registration-fields">
               <label className="operator-name-field">
                 <span>Operator name</span>
@@ -807,6 +789,24 @@ function OperatorAdminPage({ machines, password }) {
                   autoComplete="off"
                   maxLength={120}
                 />
+              </label>
+              <label>
+                <span id="operator-machine-label">Machine</span>
+                <select
+                  aria-labelledby="operator-machine-label"
+                  value={form.machine}
+                  onChange={(event) => setForm((current) => ({ ...current, machine: event.target.value }))}
+                  disabled={loading || Boolean(editingOperator?.machine_id)}
+                  required
+                >
+                  <option value="">Select a machine</option>
+                  {machineOptions.map((machine) => <option value={machine.id} key={machine.id}>{machine.name}</option>)}
+                  {editingOperator?.machine_id && !machineOptions.some((machine) => machine.id === editingOperator.machine_id) && (
+                    <option value={editingOperator.machine_id}>
+                      {machines.find((machine) => machine.id === editingOperator.machine_id)?.name || editingOperator.machine_id}
+                    </option>
+                  )}
+                </select>
               </label>
               <label className="operator-registration-pin">
                 <span>6-digit PIN</span>
@@ -822,7 +822,7 @@ function OperatorAdminPage({ machines, password }) {
               <button
                 className="primary"
                 type="submit"
-                disabled={loading || form.pin.length !== 6 || !form.person_name.trim()}
+                disabled={loading || form.pin.length !== 6 || !form.person_name.trim() || !form.machine}
               >
                 {editingOperator ? "Save new PIN" : "Register operator"}
               </button>
@@ -833,16 +833,23 @@ function OperatorAdminPage({ machines, password }) {
           <section className="operator-assignments-card">
             <div className="operator-section-heading"><strong>Registered operators</strong></div>
             <div className="operator-assignment-list">
-              {overview.operators.length ? overview.operators.map((row) => (
-                <div className={`operator-assignment-row${row.is_active ? "" : " is-disabled"}`} key={row.id}>
-                  <i aria-hidden="true" />
-                  <span><strong>{row.person_name}</strong><small>{row.is_active ? "Active" : "Disabled"}</small></span>
-                  <div className="operator-roster-actions">
-                    <button type="button" onClick={() => editPin(row)} disabled={loading}>Reset PIN</button>
-                    <button type="button" onClick={() => toggleOperator(row)} disabled={loading}>{row.is_active ? "Disable" : "Enable"}</button>
+              {overview.operators.length ? overview.operators.map((row) => {
+                const machineName = machines.find((machine) => machine.id === row.machine_id)?.name || row.machine_id;
+                return (
+                  <div className={`operator-assignment-row${row.is_active ? "" : " is-disabled"}`} key={row.id}>
+                    <i aria-hidden="true" />
+                    <span>
+                      <strong>{row.person_name}</strong>
+                      <small>{machineName ? `${machineName} · ${row.is_active ? "Active" : "Disabled"}` : "No machine assigned"}</small>
+                    </span>
+                    <div className="operator-roster-actions">
+                      <button type="button" onClick={() => editPin(row)} disabled={loading}>{row.machine_id ? "Reset PIN" : "Assign machine"}</button>
+                      <button type="button" onClick={() => toggleOperator(row)} disabled={loading}>{row.is_active ? "Disable" : "Enable"}</button>
+                      <button className="admin-delete-button" type="button" onClick={() => deleteOperator(row)} disabled={loading}>Delete</button>
+                    </div>
                   </div>
-                </div>
-              )) : <div className="operator-empty-state">{loading ? "Loading operators…" : "No operators registered"}</div>}
+                );
+              }) : <div className="operator-empty-state">{loading ? "Loading operators…" : "No operators registered"}</div>}
             </div>
           </section>
         </div>
@@ -1929,6 +1936,25 @@ function MachineConfigurationPage({
     }
   }
 
+  async function deleteMachine() {
+    const machine = machines.find((item) => item.id === selectedMachineId);
+    if (saving || !machine || !window.confirm(`Delete ${machine.name}?`)) return;
+
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      await sendJson(`/api/machines/${encodeURIComponent(machine.id)}`, { password }, { method: "DELETE" });
+      showMachineGallery();
+      setMessage(`${machine.name} deleted.`);
+      await reload();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const detectedFieldKeys = [...new Set(availableFields.map((field) => field.key).filter(Boolean))];
   const activeRulesPointIndex = draft.points.findIndex((point) => Number(point.point_id) === Number(rulesPointId));
   const activeRulesPoint = activeRulesPointIndex >= 0 ? draft.points[activeRulesPointIndex] : null;
@@ -2066,7 +2092,13 @@ function MachineConfigurationPage({
 
         <div className="configurator-scroll">
           <section className="configurator-section identity-source-section">
-            <div className="configurator-section-heading"><span>Step 1</span><div><strong>Machine connection</strong><small>Machine identity and MQTT source</small></div></div>
+            <div className="configurator-section-heading">
+              <span>Step 1</span>
+              <div><strong>Machine connection</strong><small>Machine identity and MQTT source</small></div>
+              <button className="admin-delete-button" type="button" onClick={deleteMachine} disabled={saving}>
+                Delete machine
+              </button>
+            </div>
             <div className="configurator-form-grid">
               <label>Machine name<input value={draft.name} onChange={(event) => updateDraft("name", event.target.value)} /></label>
               <label>MQTT broker URL<input value={draft.data_source.source_endpoint || ""} onChange={(event) => updateSource("source_endpoint", event.target.value)} placeholder="mqtt://broker:1883" /></label>

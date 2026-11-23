@@ -4073,7 +4073,7 @@ margin-top: 10px;
 }
 
 .operator-registration-fields {
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, .8fr);
   align-items: end;
   gap: 12px;
   display: grid;
@@ -4105,7 +4105,8 @@ margin-top: 10px;
   min-height: 12px;
 }
 
-.operator-registration-fields input {
+.operator-registration-fields input,
+.operator-registration-fields select {
   box-sizing: border-box;
   width: 100%;
   height: 48px;
@@ -4150,7 +4151,8 @@ margin-top: 10px;
   transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
 }
 
-.operator-registration-fields input:hover {
+.operator-registration-fields input:hover,
+.operator-registration-fields select:hover {
   background: color-mix(in srgb, var(--admin-field) 86%, var(--admin-hover));
 }
 
@@ -4162,7 +4164,8 @@ margin-top: 10px;
   background: color-mix(in srgb, var(--admin-field) 86%, var(--admin-hover));
 }
 
-.operator-registration-fields input:focus {
+.operator-registration-fields input:focus,
+.operator-registration-fields select:focus {
   border-color: var(--admin-scroll-thumb-hover);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--admin-accent) 10%, transparent);
 }
@@ -4292,6 +4295,28 @@ margin-top: 10px;
 }
 
 .operator-roster-actions button:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+.configurator-section-heading .admin-delete-button,
+.operator-roster-actions .admin-delete-button {
+  color: var(--admin-text);
+  border: 1px solid #e66f7770;
+  border-radius: 7px;
+  background: color-mix(in srgb, #e66f77 12%, var(--admin-field));
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.configurator-section-heading .admin-delete-button:hover:not(:disabled),
+.operator-roster-actions .admin-delete-button:hover:not(:disabled) {
+  background: color-mix(in srgb, #e66f77 22%, var(--admin-field));
+}
+
+.admin-delete-button:disabled {
   opacity: .5;
   cursor: default;
 }
@@ -4804,29 +4829,6 @@ margin-top: 10px;
   text-align: left;
   color: var(--confirm-muted);
   font-size: 12px;
-}
-
-.confirmation-operator-field > input,
-.confirmation-operator-field > select {
-  width: 100%;
-  min-height: 44px;
-  padding: 0 12px;
-  color: var(--confirm-text);
-  background: var(--confirm-panel-strong);
-  border: 1px solid var(--confirm-line);
-  border-radius: 11px;
-  font: inherit;
-  font-size: 16px;
-}
-
-.confirmation-operator-field > input:focus-visible,
-.confirmation-operator-field > select:focus-visible {
-  outline: 2px solid var(--confirm-accent);
-  outline-offset: 1px;
-}
-
-.confirmation-operator-field > small {
-  font-size: 11px;
 }
 
 .confirmation-operator-field .pin-input-shell {

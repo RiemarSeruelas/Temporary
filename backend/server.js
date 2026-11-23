@@ -100,6 +100,7 @@ let lastMessageAt = null;
 let lastRawPayload = null;
 let mqttClient = null;
 let sourceTopicIndex = new Map();
+let sourceRefreshVersion = 0;
 const latestMachineDataById = new Map();
 
 let latestMachineData = {
@@ -512,14 +513,6 @@ function manilaLocalToUtc(dateKey, hhmm, dayOffset = 0) {
   return new Date(Date.UTC(year, month - 1, day + dayOffset, hour, minute, 0) - MANILA_OFFSET_MINUTES * 60 * 1000);
 }
 
-function normalizeShiftCode(value) {
-  const text = String(value || "").trim().toUpperCase();
-  if (["MORNING", "AM", "1"].includes(text)) return "MORNING";
-  if (["AFTERNOON", "PM", "2"].includes(text)) return "AFTERNOON";
-  if (["NIGHT", "NOC", "3"].includes(text)) return "NIGHT";
-  return "";
-}
-
 function getCurrentProductionShift(now = new Date()) {
   const currentParts = manilaParts(now);
   let shiftCode = "NIGHT";
@@ -765,40 +758,61 @@ function requireSixDigitPin(value) {
 const derivePin = promisify(crypto.scrypt);
 const operatorPinAttempts = new Map();
 
-async function hashOperatorPin(pin, salt = crypto.randomBytes(16).toString("hex")) {
-  const derived = await derivePin(pin, salt, 32);
-  return `${salt}:${derived.toString("hex")}`;
-}
-
-async function authenticateOperator(name, pin) {
+async function machinePinSalt(machineId) {
+  if (!machineId) {
+    throw Object.assign(new Error("Select a machine."), { statusCode: 400 });
+  }
   const result = await pgPool.query(
-    `SELECT id, person_name, pin_hash FROM ${operatorsTable} WHERE LOWER(person_name) = LOWER($1) AND is_active`,
-    [name]
+    `
+      SELECT to_char(created_at, 'YYYY-MM-DD HH24:MI:SS.US') AS created_key
+      FROM ${machinesTable}
+      WHERE id = $1 AND is_active
+    `,
+    [machineId]
   );
-  const operator = result.rows[0];
-  if (!operator) {
-    throw Object.assign(new Error("Invalid operator name or PIN."), { statusCode: 403 });
+  if (!result.rows.length) {
+    throw Object.assign(new Error("The selected machine is not active or does not exist."), { statusCode: 404 });
   }
 
+  return `machine-monitoring:${machineId}:${result.rows[0].created_key ?? ""}`;
+}
+
+async function hashOperatorPin(pin, salt) {
+  const derived = await derivePin(pin, salt, 32);
+  return derived.toString("hex");
+}
+
+async function authenticateOperator(machineId, pin, address) {
+  const salt = await machinePinSalt(machineId);
+  const key = JSON.stringify([address, machineId]);
   const now = Date.now();
-  let attempts = operatorPinAttempts.get(operator.id);
+  let attempts = operatorPinAttempts.get(key);
   if (!attempts || now >= attempts.expiresAt) {
+    for (const [entry, window] of operatorPinAttempts) {
+      if (now >= window.expiresAt) operatorPinAttempts.delete(entry);
+    }
     attempts = { count: 0, expiresAt: now + 5 * 60 * 1000 };
-    operatorPinAttempts.set(operator.id, attempts);
+    operatorPinAttempts.set(key, attempts);
   }
   if (attempts.count >= 5) {
     throw Object.assign(new Error("Too many attempts. Try again in a few minutes."), { statusCode: 429 });
   }
   attempts.count += 1;
 
-  const [salt] = operator.pin_hash.split(":");
-  const expected = Buffer.from(operator.pin_hash);
-  const supplied = Buffer.from(await hashOperatorPin(pin, salt));
-  if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) {
-    throw Object.assign(new Error("Invalid operator name or PIN."), { statusCode: 403 });
+  const result = await pgPool.query(
+    `
+      SELECT id, person_name, pin_hash
+      FROM ${operatorsTable}
+      WHERE machine_id = $1 AND pin_hash = $2 AND is_active
+    `,
+    [machineId, await hashOperatorPin(pin, salt)]
+  );
+  const operator = result.rows[0];
+  if (!operator) {
+    throw Object.assign(new Error("Invalid PIN for the selected machine."), { statusCode: 403 });
   }
 
-  operatorPinAttempts.delete(operator.id);
+  if (operatorPinAttempts.get(key) === attempts) operatorPinAttempts.delete(key);
   return operator;
 }
 
@@ -854,22 +868,23 @@ function buildMachineSnapshot(machineData, points, capturedAt) {
   };
 }
 
-async function findConfirmationRequest({ requestId, operator, machineId, shiftCode, shiftDate }) {
+async function findConfirmationRequest({ requestId, operator, machineId }) {
   const result = await pgPool.query(
     `
-      SELECT id, person_name, machine_name, created_at
+      SELECT id, person_name, machine_name, created_at, shift_code,
+             to_char(shift_date, 'YYYY-MM-DD') AS shift_date
       FROM ${confirmationsTable}
       WHERE request_id = $1 AND operator_id = $2 AND machine = $3
-        AND shift_code = $4 AND to_char(shift_date, 'YYYY-MM-DD') = $5
     `,
-    [requestId, operator.id, machineId, shiftCode, shiftDate]
+    [requestId, operator.id, machineId]
   );
   return result.rows[0];
 }
 
-async function insertConfirmationLog({ requestId, operator, machineId, shiftCode, shiftDate }) {
+async function insertConfirmationLog({ requestId, operator, machineId }) {
   const machine = await loadMachineSnapshotPoints(machineId);
   const capturedAt = new Date();
+  const shift = getCurrentProductionShift(capturedAt);
   const machineData = machineStateFor(machineId);
   const snapshot = buildMachineSnapshot(machineData, machine.points, capturedAt);
   const verification = getMachineVerificationState(machineData, capturedAt);
@@ -884,17 +899,19 @@ async function insertConfirmationLog({ requestId, operator, machineId, shiftCode
         $6, 'confirmed', $7, 'operator_pin', $8::timestamptz, $9::jsonb, $10
       FROM ${operatorsTable} o
       JOIN ${machinesTable} m ON m.id = $1 AND m.is_active AND m.config_revision = $2
-      WHERE o.id = $3 AND o.is_active AND o.pin_hash = $11
+      WHERE o.id = $3 AND o.is_active AND o.pin_hash = $11 AND o.machine_id = m.id
+      FOR SHARE OF o
       ON CONFLICT (request_id) DO NOTHING
-      RETURNING id, person_name, machine_name, created_at
+      RETURNING id, person_name, machine_name, created_at, shift_code,
+                to_char(shift_date, 'YYYY-MM-DD') AS shift_date
     `,
     [
-      machineId, machine.revision, operator.id, shiftCode, shiftDate, verification.required,
+      machineId, machine.revision, operator.id, shift.shift_code, shift.shift_date, verification.required,
       verification.reason, capturedAt, JSON.stringify(snapshot), requestId, operator.pin_hash,
     ]
   );
 
-  return saved.rows[0] || findConfirmationRequest({ requestId, operator, machineId, shiftCode, shiftDate });
+  return saved.rows[0] || findConfirmationRequest({ requestId, operator, machineId });
 }
 
 async function recordMachineReceipt(machineId, topic, machineRunning, receivedAt = new Date()) {
@@ -1018,7 +1035,7 @@ async function loadOperatorOverview({ date_from, date_to, machine } = {}) {
       `,
       [range.from, range.to, machineId]
     ),
-    pgPool.query(`SELECT id, person_name, is_active FROM ${operatorsTable} ORDER BY person_name, id`),
+    pgPool.query(`SELECT id, person_name, machine_id, is_active FROM ${operatorsTable} ORDER BY person_name, id`),
   ]);
 
   const receipts = registrationsResult.rows.length
@@ -1076,10 +1093,6 @@ async function ensureTables() {
     )
   `);
   await pgPool.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_operators_name ON ${operatorsTable} (LOWER(person_name))
-  `);
-
-  await pgPool.query(`
     CREATE TABLE IF NOT EXISTS ${confirmationsTable} (
       id SERIAL PRIMARY KEY,
       person_id INTEGER,
@@ -1096,7 +1109,7 @@ async function ensureTables() {
       machine_required BOOLEAN DEFAULT TRUE,
       confirmation_status TEXT DEFAULT 'confirmed',
       registration_id BIGINT,
-      operator_id BIGINT REFERENCES ${operatorsTable}(id),
+      operator_id BIGINT REFERENCES ${operatorsTable}(id) ON DELETE SET NULL,
       state_snapshot JSONB,
       request_id TEXT,
       machine_activity_reason TEXT,
@@ -1194,6 +1207,16 @@ async function ensureTables() {
   }
 
   await pgPool.query(`
+    ALTER TABLE ${operatorsTable}
+      ADD COLUMN IF NOT EXISTS machine_id TEXT REFERENCES ${machinesTable}(id) ON DELETE SET NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_operators_machine_name
+      ON ${operatorsTable} (machine_id, LOWER(person_name)) WHERE machine_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_operators_machine_pin
+      ON ${operatorsTable} (machine_id, pin_hash) WHERE machine_id IS NOT NULL;
+    DROP INDEX IF EXISTS "${safeSchema}".idx_operators_name;
+  `);
+
+  await pgPool.query(`
     CREATE TABLE IF NOT EXISTS ${machineSourcesTable} (
       machine_id TEXT PRIMARY KEY REFERENCES ${machinesTable}(id) ON DELETE CASCADE,
       source_system TEXT NOT NULL DEFAULT 'HighByte',
@@ -1282,7 +1305,7 @@ async function ensureTables() {
     ["verification_window_start", "TIMESTAMPTZ"], ["verification_window_end", "TIMESTAMPTZ"],
     ["machine_required", "BOOLEAN DEFAULT TRUE"],
     ["confirmation_status", "TEXT DEFAULT 'confirmed'"], ["registration_id", "BIGINT"],
-    ["operator_id", `BIGINT REFERENCES ${operatorsTable}(id)`],
+    ["operator_id", `BIGINT REFERENCES ${operatorsTable}(id) ON DELETE SET NULL`],
     ["state_snapshot", "JSONB"], ["request_id", "TEXT"],
     ["machine_activity_reason", "TEXT"],
     ["verification_method", "TEXT NOT NULL DEFAULT 'registration_pin'"],
@@ -1291,6 +1314,24 @@ async function ensureTables() {
   for (const [col, typ] of confirmationColumns) {
     await pgPool.query(`ALTER TABLE ${confirmationsTable} ADD COLUMN IF NOT EXISTS ${col} ${typ}`);
   }
+
+  // Deleting an operator retains the confirmation's recorded name and snapshot.
+  await pgPool.query(`
+    DO $$
+    DECLARE previous_fk TEXT;
+    BEGIN
+      SELECT conname INTO previous_fk
+      FROM pg_constraint
+      WHERE conrelid = '${confirmationsTable}'::regclass AND confrelid = '${operatorsTable}'::regclass
+        AND contype = 'f' AND confdeltype <> 'n';
+      IF previous_fk IS NOT NULL THEN
+        EXECUTE format('ALTER TABLE ${confirmationsTable} DROP CONSTRAINT %I', previous_fk);
+        ALTER TABLE ${confirmationsTable} ADD FOREIGN KEY (operator_id) REFERENCES ${operatorsTable}(id) ON DELETE SET NULL;
+      END IF;
+    END $$;
+    CREATE INDEX IF NOT EXISTS idx_confirmations_operator_id
+      ON ${confirmationsTable} (operator_id) WHERE operator_id IS NOT NULL;
+  `);
 
   // Older revisions stored UTC wall-clock values without timezone metadata.
   // Convert these columns once so 07:00 UTC displays as 15:00 in Manila.
@@ -1436,22 +1477,29 @@ async function loadMachineConfigurations({ includeInactive = true } = {}) {
 }
 
 async function refreshSourceTopicIndex() {
-  const previousTopics = [...sourceTopicIndex.keys()];
+  const version = ++sourceRefreshVersion;
   const sources = await pgPool.query(
     `
-      SELECT s.machine_id, s.source_topic, s.source_path, s.payload_root
-      FROM ${machineSourcesTable} s
-      JOIN ${machinesTable} m ON m.id = s.machine_id
-      WHERE s.is_active = TRUE AND m.is_active = TRUE AND NULLIF(s.source_topic, '') IS NOT NULL
+      SELECT m.id AS machine_id, s.source_topic, s.source_path, s.payload_root
+      FROM ${machinesTable} m
+      LEFT JOIN ${machineSourcesTable} s ON s.machine_id = m.id AND s.is_active
+      WHERE m.is_active
     `
   );
+  if (version !== sourceRefreshVersion) return;
 
+  const previousTopics = [...sourceTopicIndex.keys()];
   const nextIndex = new Map();
   for (const source of sources.rows) {
-    const topic = String(source.source_topic).trim();
+    const topic = String(source.source_topic ?? "").trim();
+    if (!topic) continue;
     if (!nextIndex.has(topic)) nextIndex.set(topic, []);
     nextIndex.get(topic).push(source);
     machineStateFor(source.machine_id, topic);
+  }
+  const mespack = sources.rows.find((source) => source.machine_id === "mespack");
+  if (mespack && !String(mespack.source_topic ?? "").trim() && !nextIndex.has(MQTT_TOPIC)) {
+    nextIndex.set(MQTT_TOPIC, [{ machine_id: "mespack", payload_root: "data", source_path: null }]);
   }
   sourceTopicIndex = nextIndex;
 
@@ -1768,7 +1816,8 @@ if (MQTT_BROKER) {
     }
 
     logInfo("✅ MQTT connected");
-    const configuredTopics = sourceTopicIndex.size ? [...sourceTopicIndex.keys()] : [MQTT_TOPIC];
+    const configuredTopics = [...sourceTopicIndex.keys()];
+    if (!configuredTopics.length) return;
     mqttClient.subscribe(configuredTopics, (err) => {
       if (err) {
         logError("❌ MQTT subscribe error", err);
@@ -1813,8 +1862,7 @@ if (MQTT_BROKER) {
       return;
     }
 
-    const configuredSources = sourceTopicIndex.get(topic)
-      || (topic === MQTT_TOPIC ? [{ machine_id: "mespack", payload_root: "data", source_path: null }] : []);
+    const configuredSources = sourceTopicIndex.get(topic) || [];
 
     if (!configuredSources.length) {
       logWarn(`⚠ MQTT message ignored because topic is not assigned to an active machine: ${topic}`);
@@ -2062,6 +2110,29 @@ app.patch("/api/machines/:id", async (req, res) => {
   }
 });
 
+app.delete("/api/machines/:id", async (req, res) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+
+    const machineId = String(req.params.id || "").trim().toLowerCase();
+    const deleted = await pgPool.query(`DELETE FROM ${machinesTable} WHERE id = $1 RETURNING id, name`, [machineId]);
+    if (!deleted.rows.length) return res.status(404).json({ error: "Machine not found." });
+
+    // Remove the route immediately while the broker subscriptions are refreshed.
+    for (const [topic, sources] of sourceTopicIndex) {
+      sourceTopicIndex.set(topic, sources.filter((source) => source.machine_id !== machineId));
+    }
+    latestMachineDataById.delete(machineId);
+    if (machineId === "mespack") latestMachineData = machineStateFor(machineId, MQTT_TOPIC);
+    await refreshSourceTopicIndex().catch((err) => logError("❌ MQTT refresh after machine deletion failed", err));
+
+    res.json({ ok: true, machine: deleted.rows[0] });
+  } catch (err) {
+    logError("❌ Machine deletion failed", err);
+    res.status(500).json({ error: "Unable to delete the machine." });
+  }
+});
+
 app.get("/api/machines/:id/image", async (req, res) => {
   try {
     const result = await pgPool.query(
@@ -2228,25 +2299,31 @@ app.post("/api/operator/register", async (req, res) => {
     if (!name || name.length > 120) {
       return res.status(400).json({ error: "Enter an operator name of 120 characters or fewer." });
     }
+    const machineId = normalizeMachineId(req.body?.machine);
     const pin = requireSixDigitPin(req.body?.pin);
+    const pinHash = await hashOperatorPin(pin, await machinePinSalt(machineId));
     const result = await pgPool.query(
       `
-        INSERT INTO ${operatorsTable} (person_name, pin_hash)
-        VALUES ($1, $2)
-        ON CONFLICT (LOWER(person_name)) DO NOTHING
-        RETURNING id, person_name, is_active
+        INSERT INTO ${operatorsTable} (person_name, machine_id, pin_hash)
+        VALUES ($1, $2, $3)
+        RETURNING id, person_name, machine_id, is_active
       `,
-      [name, await hashOperatorPin(pin)]
+      [name, machineId, pinHash]
     );
     const operator = result.rows[0];
-    if (!operator) {
-      return res.status(409).json({ error: "An operator with this name already exists." });
-    }
 
     res.status(201).json({ ok: true, operator, message: `${operator.person_name} is registered.` });
   } catch (err) {
-    logError("❌ Operator registration failed", err);
-    res.status(err.statusCode || 500).json({ error: err.message });
+    if (err.code === "23505") {
+      return res.status(409).json({
+        error: err.constraint === "idx_operators_machine_pin"
+          ? "That PIN is already registered for this machine."
+          : "That operator name is already registered for this machine.",
+      });
+    }
+    if (err.code === "23503") return res.status(404).json({ error: "The selected machine was deleted." });
+    if (!err.statusCode) logError("❌ Operator registration failed", err);
+    res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : "Unable to register the operator." });
   }
 });
 
@@ -2259,30 +2336,62 @@ app.patch("/api/operator/admin/operators/:id", async (req, res) => {
     if (!/^\d{1,18}$/.test(id) || (!hasPin && typeof active !== "boolean")) {
       return res.status(400).json({ error: "Select an operator and an update." });
     }
-    const pinHash = hasPin ? await hashOperatorPin(requireSixDigitPin(req.body.pin)) : null;
+
+    let currentMachineId = null;
+    let machineId = null;
+    let pinHash = null;
+    if (hasPin) {
+      const current = await pgPool.query(`SELECT machine_id FROM ${operatorsTable} WHERE id = $1`, [id]);
+      if (!current.rows.length) return res.status(404).json({ error: "Operator not found." });
+      currentMachineId = current.rows[0].machine_id;
+      machineId = currentMachineId || normalizeMachineId(req.body?.machine);
+      const pin = requireSixDigitPin(req.body.pin);
+      pinHash = await hashOperatorPin(pin, await machinePinSalt(machineId));
+    }
+
     const result = await pgPool.query(
       `
         UPDATE ${operatorsTable}
-        SET pin_hash = COALESCE($2, pin_hash), is_active = COALESCE($3, is_active)
-        WHERE id = $1
-        RETURNING id, person_name, is_active
+        SET pin_hash = COALESCE($2, pin_hash),
+            is_active = COALESCE($3, is_active),
+            machine_id = COALESCE($4, machine_id)
+        WHERE id = $1 AND ($2::text IS NULL OR machine_id IS NOT DISTINCT FROM $5)
+        RETURNING id, person_name, machine_id, is_active
       `,
-      [id, pinHash, typeof active === "boolean" ? active : null]
+      [id, pinHash, typeof active === "boolean" ? active : null, machineId, currentMachineId]
     );
-    if (!result.rows.length) return res.status(404).json({ error: "Operator not found." });
+    if (!result.rows.length) return res.status(409).json({ error: "The operator changed. Refresh and try again." });
 
-    operatorPinAttempts.delete(id);
     res.json({ ok: true, operator: result.rows[0] });
   } catch (err) {
-    logError("❌ Operator update failed", err);
-    res.status(err.statusCode || 500).json({ error: err.message });
+    if (err.code === "23505") {
+      return res.status(409).json({
+        error: err.constraint === "idx_operators_machine_pin"
+          ? "That PIN is already registered for this machine."
+          : "That operator name is already registered for this machine.",
+      });
+    }
+    if (err.code === "23503") return res.status(404).json({ error: "The selected machine was deleted." });
+    if (!err.statusCode) logError("❌ Operator update failed", err);
+    res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : "Unable to update the operator." });
   }
 });
 
-app.get("/api/machine-check/context", (req, res) => {
-  const shift = getCurrentProductionShift();
-  res.set("Cache-Control", "no-store");
-  res.json({ shift_code: shift.shift_code, shift_date: shift.shift_date });
+app.delete("/api/operator/admin/operators/:id", async (req, res) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+    const id = req.params.id;
+    if (!/^\d{1,18}$/.test(id)) {
+      return res.status(400).json({ error: "Select an operator." });
+    }
+    const deleted = await pgPool.query(`DELETE FROM ${operatorsTable} WHERE id = $1 RETURNING id`, [id]);
+    if (!deleted.rows.length) return res.status(404).json({ error: "Operator not found." });
+
+    res.json({ ok: true });
+  } catch (err) {
+    logError("❌ Operator deletion failed", err);
+    res.status(500).json({ error: "Unable to delete the operator." });
+  }
 });
 
 app.get("/api/machine-check/status", async (req, res) => {
@@ -2401,31 +2510,20 @@ app.get("/api/machine-check/status", async (req, res) => {
 app.post("/api/machine-check/confirm", async (req, res) => {
   try {
     const machineId = normalizeMachineId(req.body?.machine);
-    const name = normalizeOperatorName(req.body?.person_name);
-    const shiftCode = normalizeShiftCode(req.body?.shift_code);
-    const shiftDate = String(req.body?.shift_date ?? "");
-    const requestId = String(req.body?.request_id ?? "");
-    const currentShift = getCurrentProductionShift();
+    const pin = requireSixDigitPin(req.body?.pin);
+    const requestId = String(req.body?.request_id ?? crypto.randomUUID());
 
-    if (!machineId || !name || name.length > 120 || !shiftCode || !/^\d{4}-\d{2}-\d{2}$/.test(shiftDate)) {
-      return res.status(400).json({ error: "Enter an operator name and select a machine and shift." });
-    }
     if (!/^[a-zA-Z0-9-]{16,80}$/.test(requestId)) {
       return res.status(400).json({ error: "Invalid confirmation request. Open Confirm check again." });
     }
 
-    const operator = await authenticateOperator(name, requireSixDigitPin(req.body?.pin));
-    const input = { requestId, operator, machineId, shiftCode, shiftDate };
-    const sameProductionDate = shiftDate === currentShift.shift_date;
-    const log = sameProductionDate
-      ? await insertConfirmationLog(input)
-      : await findConfirmationRequest(input);
-
+    // The bundled Nginx sets X-Real-IP to the connection's source address.
+    const operator = await authenticateOperator(machineId, pin, req.get("X-Real-IP") || req.ip);
+    const input = { requestId, operator, machineId };
+    const log = await insertConfirmationLog(input);
     if (!log) {
       return res.status(409).json({
-        error: sameProductionDate
-          ? "The operator or machine details changed. Open Confirm check and try again."
-          : "The production date changed. Open Confirm check and select the shift again.",
+        error: "The operator or machine details changed. Open Confirm check and try again.",
       });
     }
 
@@ -2434,7 +2532,7 @@ app.post("/api/machine-check/confirm", async (req, res) => {
       log,
       operator: { person_name: log.person_name },
       machine: { id: machineId, name: log.machine_name },
-      shift: { code: shiftCode, date: shiftDate, label: PRODUCTION_SHIFTS[shiftCode].label },
+      shift: { code: log.shift_code, date: log.shift_date, label: PRODUCTION_SHIFTS[log.shift_code].label },
     });
   } catch (err) {
     if (!err.statusCode) logError("❌ Machine check confirmation failed", err);

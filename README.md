@@ -43,8 +43,8 @@ Machine configuration, operator records, confirmations, and session logs are sto
 | **Machine Monitoring** | View the configured machine, machine segments, and current live status. |
 | **Machine Set Up** | Configure the machine connection, machine image, segments, and Data Mapping. |
 | **Data Mapping** | Assign incoming MQTT / HighByte fields to machine points and define what each received value means. |
-| **Operator** | Register operators, manage personal PINs, and view confirmation snapshots in Logs. |
-| **Machine Confirmation** | Choose the machine and shift, then confirm with your name and 6-digit personal PIN. |
+| **Operator** | Register an operator's name, machine, and 6-digit PIN. Manage the roster and view confirmation snapshots in Logs. |
+| **Machine Confirmation** | Choose a machine and enter the PIN registered for it. |
 | **Operator Admin** | Review operator registration and confirmation records. |
 | **Session Logs** | Store one application usage record when a browser session ends. |
 
@@ -182,18 +182,19 @@ Select **Save Configuration** after making changes.
 
 Machine configuration is stored in PostgreSQL and should remain available after page refreshes, Docker restarts, and application rebuilds.
 
+To remove a machine, open its setup, select **Delete machine** in the upper-right of **Machine connection**, and confirm. Its settings are deleted, and its registered operators can be assigned to another machine. Past confirmations remain available in **Logs**.
+
 ### 5. Register an Operator
 
-Open **Admin → Operator → Registration**. Register each operator once with their name and a chosen 6-digit personal PIN. The operator uses those credentials for any machine and shift. Names are matched without regard to case, so use distinct names for operators who share a name. Use **Reset PIN** or **Disable** in the registered operators list to manage an existing operator.
+Open **Admin → Operator → Registration**. Enter the operator name, select the machine, and enter a 6-digit PIN. Each PIN identifies one operator on that machine and works during any shift. Register the operator on each machine they cover.
 
-When upgrading from shift-specific registration, enroll each operator here to create their personal PIN. The database stores a salted PIN hash.
+Use **Delete** beside a registered operator and confirm to remove the registration. For an existing operator listed without a machine, choose **Assign machine** and save their PIN for the chosen machine.
 
 ### 6. Confirm a Machine Check
 
 1. Select **Confirm check**.
-2. Choose the machine and one of the three shifts for the displayed Manila production date. The form starts on the current shift.
-3. Enter your registered name and personal PIN, then select **Confirm check**.
-4. The log records the chosen shift, the actual confirmation time, and the latest reported states of the machine's configured points.
+2. Choose the machine and enter the 6-digit PIN registered for it.
+3. Select **Confirm check**. The app records the operator from the registration, the shift from the confirmation time in Manila, and the latest reported states of the machine's configured points.
 
 ### 7. Review Operator Records
 
@@ -229,12 +230,12 @@ Browser session-end logging is best effort. A sudden power loss, operating-syste
 | **2nd shift** | 2:00 PM – 10:00 PM |
 | **3rd shift** | 10:00 PM – 6:00 AM |
 
-The production date begins at 6:00 AM Manila. The 3rd shift belongs to the date on which it started. Operators can record a confirmation under any of the three shifts for the displayed production date. For example, a check recorded at 7:15 PM may be filed under the 1st shift, with 7:15 PM recorded as the actual time.
+The production date begins at 6:00 AM Manila. The 3rd shift belongs to the date on which it started. A check recorded at 7:15 PM is filed under the 2nd shift.
 
 ## Important Rules
 
-- Operators confirm with their own registered name and 6-digit PIN.
-- The 6-digit PIN can be used for all shifts.
+- Operators confirm with the machine and the 6-digit PIN registered for that machine.
+- A registered PIN works during all three shifts.
 - The snapshot uses the configured point mappings and the latest MQTT readings available to the backend at confirmation. Logs fetch the stored readings when an administrator opens a snapshot.
 
 - PostgreSQL is the source of truth for machine configuration.
@@ -297,11 +298,11 @@ The original primary and secondary source-key columns are retained for backward 
 
 ### Operator and Confirmation Data
 
-`operators` stores the current operator roster and personal PIN hashes.
+`operators` stores the operator roster, assigned machines, and salted PIN hashes.
 
 `operator_shift_registrations` stores historical machine and shift assignments used for earlier logs.
 
-`machine_check_confirmations` stores completed checks. New checks store the selected shift, actual confirmation time, and point statuses in the `state_snapshot` JSONB column.
+`machine_check_confirmations` stores completed checks. New checks store the shift at the actual confirmation time and point statuses in the `state_snapshot` JSONB column.
 
 `machine_data_receipts` stores machine data-receipt activity used by monitoring and reporting.
 
@@ -666,9 +667,9 @@ Confirm that the PIN contains exactly six digits.
 Verify the operator and machine details below.
 
 - The operator registration was saved successfully.
-- The operator enters the same name and PIN used at registration.
+- The PIN is registered for the selected machine.
 - The operator account is active.
-- The selected machine is active and the production date is current.
+- The selected machine is active.
 - The backend and PostgreSQL connection are healthy.
 
 Review server logs with the following command.
@@ -738,7 +739,7 @@ ORDER BY machine_id, point_id;
 ### Registered Operators
 
 ```sql
-SELECT id, person_name, is_active
+SELECT id, person_name, machine_id, is_active
 FROM machine_monitoring.operators
 ORDER BY person_name;
 ```
@@ -866,8 +867,8 @@ Before production / UAT deployment, confirm:
 - Save Configuration persists after refresh
 - Flexible fields persist after refresh
 - Operator registration works
-- A registered operator can confirm any selected shift with their personal PIN
-- Logs show the selected shift and actual confirmation time
+- A registered operator can confirm using the machine and PIN
+- Logs show the shift at the actual confirmation time
 - **View snapshot** shows the saved machine readings
 - Session logs are created
 - Another permitted computer can open port `5054`

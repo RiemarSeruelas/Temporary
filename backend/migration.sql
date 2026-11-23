@@ -10,9 +10,6 @@ CREATE TABLE IF NOT EXISTS machine_monitoring.operators (
   is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_operators_name
-  ON machine_monitoring.operators (LOWER(person_name));
-
 CREATE TABLE IF NOT EXISTS machine_monitoring.machine_check_confirmations (
   id SERIAL PRIMARY KEY,
   person_id INTEGER,
@@ -29,7 +26,7 @@ CREATE TABLE IF NOT EXISTS machine_monitoring.machine_check_confirmations (
   machine_required BOOLEAN DEFAULT TRUE,
   confirmation_status TEXT DEFAULT 'confirmed',
   registration_id BIGINT,
-  operator_id BIGINT REFERENCES machine_monitoring.operators(id),
+  operator_id BIGINT REFERENCES machine_monitoring.operators(id) ON DELETE SET NULL,
   state_snapshot JSONB,
   request_id TEXT,
   machine_activity_reason TEXT,
@@ -50,7 +47,7 @@ ALTER TABLE machine_monitoring.machine_check_confirmations
   ADD COLUMN IF NOT EXISTS machine_required BOOLEAN DEFAULT TRUE,
   ADD COLUMN IF NOT EXISTS confirmation_status TEXT DEFAULT 'confirmed',
   ADD COLUMN IF NOT EXISTS registration_id BIGINT,
-  ADD COLUMN IF NOT EXISTS operator_id BIGINT REFERENCES machine_monitoring.operators(id),
+  ADD COLUMN IF NOT EXISTS operator_id BIGINT REFERENCES machine_monitoring.operators(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS state_snapshot JSONB,
   ADD COLUMN IF NOT EXISTS request_id TEXT,
   ADD COLUMN IF NOT EXISTS machine_activity_reason TEXT,
@@ -62,6 +59,23 @@ ALTER TABLE machine_monitoring.machine_check_confirmations
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_confirmations_request_once
   ON machine_monitoring.machine_check_confirmations (request_id);
+
+DO $$
+DECLARE previous_fk TEXT;
+BEGIN
+  SELECT conname INTO previous_fk
+  FROM pg_constraint
+  WHERE conrelid = 'machine_monitoring.machine_check_confirmations'::regclass
+    AND confrelid = 'machine_monitoring.operators'::regclass AND contype = 'f' AND confdeltype <> 'n';
+  IF previous_fk IS NOT NULL THEN
+    EXECUTE format('ALTER TABLE machine_monitoring.machine_check_confirmations DROP CONSTRAINT %I', previous_fk);
+    ALTER TABLE machine_monitoring.machine_check_confirmations
+      ADD FOREIGN KEY (operator_id) REFERENCES machine_monitoring.operators(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_confirmations_operator_id
+  ON machine_monitoring.machine_check_confirmations (operator_id) WHERE operator_id IS NOT NULL;
 
 -- Older app versions stored UTC values in timezone-less columns. Convert each
 -- one only when needed; existing 07:00 values then display as 15:00 Manila.
@@ -113,6 +127,17 @@ ALTER TABLE machine_monitoring.machine_configurations
   ADD COLUMN IF NOT EXISTS config_revision INTEGER NOT NULL DEFAULT 1,
   ADD COLUMN IF NOT EXISTS created_by TEXT,
   ADD COLUMN IF NOT EXISTS updated_by TEXT;
+
+ALTER TABLE machine_monitoring.operators
+  ADD COLUMN IF NOT EXISTS machine_id TEXT REFERENCES machine_monitoring.machine_configurations(id) ON DELETE SET NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_operators_machine_name
+  ON machine_monitoring.operators (machine_id, LOWER(person_name)) WHERE machine_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_operators_machine_pin
+  ON machine_monitoring.operators (machine_id, pin_hash) WHERE machine_id IS NOT NULL;
+
+DROP INDEX IF EXISTS machine_monitoring.idx_operators_name;
 
 CREATE TABLE IF NOT EXISTS machine_monitoring.operator_shift_registrations (
   id BIGSERIAL PRIMARY KEY,
